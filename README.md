@@ -25,11 +25,11 @@ So you must get license and import ailia libraries to Plugin folder.
 
 ## Target Environment
 
-- Windows, Mac, iOS, Android, Linux
+- Windows, Mac, Linux
 
 # Supporting Models
 
-We are now converting to C#. Please wait to complete conversion.
+We are now converting to C++. Please wait to complete conversion.
 
 ## Object detection
 
