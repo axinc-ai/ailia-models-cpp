@@ -22,10 +22,4 @@ if [ ! "$1" = "-h" ] && [ ! "$1" = "--help" ]; then
 fi
 
 #execute
-if [ "$(uname)" == "Darwin" ]; then
-    LIBRARY_PATH="../ailia/library/mac"
-    DYLD_LIBRARY_PATH=${LIBRARY_PATH} ./${MODEL} $*
-else
-    LIBRARY_PATH="../ailia/library/linux"
-    LD_LIBRARY_PATH=${LIBRARY_PATH} ./${MODEL} $*
-fi
+./${MODEL} $*
