@@ -8,24 +8,54 @@ The collection of pre-trained, state-of-the-art models for C++.
 
 ailia SDK is a cross-platform high speed inference SDK. The ailia SDK provides a consistent C++ API on Windows, Mac, Linux, iOS, Android and Jetson. It supports Unity, Python and JNI for efficient AI implementation. The ailia SDK makes great use of the GPU via Vulkan and Metal to serve accelerated computing.
 
+## Install ailia SDK
+
+### Download ailia SDK
+
 You can download a free evaluation version that allows you to evaluate the ailia SDK for 30 days. Please download from the trial link below.
 
 https://ailia.jp/en/
 
-## Notice
+### Install ailia SDK
 
-This repository does not include ailia libraries.
+Copy the files located in the folder [ailia SDK]/l​ibrary/ t​o the folder ./ailia/library/.
 
-So you must get license and import ailia libraries to Plugin folder.
+### Install dependent libraries
 
-## Develop Environment
+#### Windows
 
-- Windows, Mac
-- MSVC2019, Xcode11
+gnumake ​and ​Visual Studio 2015​ or newer are required.
+http://gnuwin32.sourceforge.net/packages/make.htm
 
-## Target Environment
+#### Mac
 
-- Windows, Mac, Linux
+Xcode Commandline Tools are required, they can be installed by running the command.
+
+```
+xcode-select --install
+```
+
+OpenCV is also required, it can be installed by running the command.
+
+```
+​brew install opencv.
+```
+
+#### Linux
+
+OpenCV is also required, it can be installed by running the command.
+```
+apt inbstall libopencv-dev
+```
+
+### Build
+
+```
+cd yolov3-face
+export AILIA_LIBRARY_PATH=../ailia/library
+cmake .
+make
+```
 
 # Supporting Models
 
@@ -36,3 +66,4 @@ We are now converting to C++. Please wait to complete conversion.
 | Name | Detail | Exported From | Supported Ailia Version |
 |:-----------|------------:|:------------:|:------------:|
 | [yolov3-tiny](/yolov3-tiny/) | [YOLO: Real-Time Object Detection](https://pjreddie.com/darknet/yolo/) | ONNX Runtime | 1.2.1 and later |
+| [yolov3-face](/yolov3-face/) | [YOLO: Real-Time Object Detection](https://pjreddie.com/darknet/yolo/) | ONNX Runtime | 1.2.1 and later |
