@@ -48,6 +48,15 @@ OpenCV is also required, it can be installed by running the command.
 apt inbstall libopencv-dev
 ```
 
+### Build
+
+```
+cd yolov3-face
+export AILIA_LIBRARY_PATH=../ailia/library
+cmake .
+make
+```
+
 # Supporting Models
 
 We are now converting to C++. Please wait to complete conversion.
