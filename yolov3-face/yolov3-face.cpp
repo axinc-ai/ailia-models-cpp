@@ -3,7 +3,7 @@
 *    DESCRIPTION:
 *      AILIA yolov3-face sample
 *    AUTHOR:
-*      Shinsuke Koyama
+*
 *    DATE:2020/08/03
 *
 *******************************************************************/
@@ -36,6 +36,8 @@
 
 #define MODEL_INPUT_WIDTH  416
 #define MODEL_INPUT_HEIGHT 416
+#define IMAGE_WIDTH        416 // for video mode
+#define IMAGE_HEIGHT       416 // for video mode
 
 #define THRESHOLD 0.2f
 #define IOU       0.45f
@@ -230,7 +232,7 @@ static int recognize_from_video(AILIADetector* detector)
             break;
         }
         cv::Mat resized_img, img;
-        adjust_frame_size(frame, resized_img, MODEL_INPUT_WIDTH, MODEL_INPUT_HEIGHT);
+        adjust_frame_size(frame, resized_img, IMAGE_WIDTH, IMAGE_HEIGHT);
         cv::cvtColor(resized_img, img, cv::COLOR_BGR2BGRA);
 
         int status = ailiaDetectorCompute(detector, img.data,
