@@ -36,8 +36,8 @@
 
 #define MODEL_INPUT_WIDTH  416
 #define MODEL_INPUT_HEIGHT 416
-#define IMAGE_WIDTH        448 // for video mode
-#define IMAGE_HEIGHT       448 // for video mode
+#define IMAGE_WIDTH        416 // for video mode
+#define IMAGE_HEIGHT       416 // for video mode
 
 #define THRESHOLD 0.4f
 #define IOU       0.45f
