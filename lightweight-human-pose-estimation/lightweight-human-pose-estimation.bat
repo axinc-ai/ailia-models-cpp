@@ -2,9 +2,20 @@
 setlocal enabledelayedexpansion
 cd %~dp0
 
-set MODEL=yolov3-tiny
+set MODEL=lightweight-human-pose-estimation
 set FILE1=%MODEL%.opt.onnx
 set FILE2=%MODEL%.opt.onnx.prototxt
+
+for %%n in (%*) do (
+    if "%%n" == "-n" (
+        set FILE1=%MODEL%.onnx
+        set FILE2=%MODEL%.onnx.prototxt
+    )
+    if "%%n" == "--normal" (
+        set FILE1=%MODEL%.onnx
+        set FILE2=%MODEL%.onnx.prototxt
+    )
+)
 
 rem download
 if not "%1" == "-h" if not "%1" == "--help" (
