@@ -94,6 +94,12 @@ static bool video_mode = false;
 static void print_usage()
 {
     PRINT_OUT("usage: m2det [-h] [-i IMAGE] [-v VIDEO] [-s SAVE_IMAGE_PATH] [-b]\n");
+    return;
+}
+
+
+static void print_help()
+{
     PRINT_OUT("\n");
     PRINT_OUT("m2det model\n");
     PRINT_OUT("\n");
@@ -109,7 +115,13 @@ static void print_usage()
     PRINT_OUT("  -b, --benchmark       Running the inference on the same input 5 times to\n");
     PRINT_OUT("                        measure execution performance. (Cannot be used in\n");
     PRINT_OUT("                        video mode)\n");
+    return;
+}
 
+
+static void print_error(std::string arg)
+{
+    PRINT_ERR("m2det: error: unrecognized arguments: %s\n", arg.c_str());
     return;
 }
 
@@ -136,10 +148,12 @@ static int argument_parser(int argc, char **argv)
             }
             else if (arg == "-h" || arg == "--help") {
                 print_usage();
+                print_help();
                 return -1;
             }
             else {
                 print_usage();
+                print_error(arg);
                 return -1;
             }
         }
@@ -149,19 +163,21 @@ static int argument_parser(int argc, char **argv)
                 image_path = arg;
                 break;
             case 2:
-                video_path= arg;
+                video_path = arg;
                 break;
             case 3:
                 save_image_path = arg;
                 break;
             default:
                 print_usage();
+                print_error(arg);
                 return -1;
             }
             status = 0;
         }
         else {
             print_usage();
+            print_error(arg);
             return -1;
         }
     }
@@ -225,21 +241,21 @@ static void preprocess(cv::Mat& simg, cv::Mat& dimg, int resize = 512,
     cv::Mat mimg;
     cv::resize(simg, mimg, cv::Size(resize, resize), 0, 0);
 
-    std::vector<int> dims0 = {mimg.rows, mimg.cols, mimg.channels()};
-    std::vector<int> dims1 = {dims0[swap[0]], dims0[swap[1]], dims0[swap[2]]};
-    dimg = cv::Mat_<float>(dims1.size(), &dims1[0]);
+    std::vector<int> size0 = {mimg.rows, mimg.cols, mimg.channels()};
+    std::vector<int> size1 = {size0[swap[0]], size0[swap[1]], size0[swap[2]]};
+    dimg = cv::Mat_<float>(size1.size(), &size1[0]); // 3D array
 
     unsigned char* mdata = (unsigned char*)mimg.data;
     float*         ddata = (float*)dimg.data;
     int sd[3] = {0, 0, 0};
-    for (int d0 = 0; d0 < dims1[0]; d0++) {
+    for (int d0 = 0; d0 < size1[0]; d0++) {
         sd[swap[0]] = d0;
-        for (int d1 = 0; d1 < dims1[1] ; d1++) {
+        for (int d1 = 0; d1 < size1[1] ; d1++) {
             sd[swap[1]] = d1;
-            for (int d2 = 0; d2 < dims1[2]; d2++) {
+            for (int d2 = 0; d2 < size1[2]; d2++) {
                 sd[swap[2]] = d2;
-                float col = mdata[sd[0]*dims0[1]*dims0[2]+sd[1]*dims0[2]+sd[2]];
-                ddata[d0*dims1[1]*dims1[2]+d1*dims1[2]+d2] = col - rgb_means[sd[2]];
+                float col = mdata[sd[0]*size0[1]*size0[2]+sd[1]*size0[2]+sd[2]];
+                ddata[d0*size1[1]*size1[2]+d1*size1[2]+d2] = col - rgb_means[sd[2]];
             }
         }
     }
@@ -524,7 +540,7 @@ int main(int argc, char **argv)
     int env_id = AILIA_ENVIRONMENT_ID_AUTO;
     status = ailiaCreate(&detector, env_id, AILIA_MULTITHREAD_AUTO);
     if (status != AILIA_STATUS_SUCCESS) {
-        PRINT_ERR("Error: ailiaCreate failed %d\n", status);
+        PRINT_ERR("ailiaCreate failed %d\n", status);
         return -1;
     }
 

@@ -30,7 +30,8 @@ int load_image(cv::Mat& img, const char* path)
         cv::cvtColor(oimg, img, cv::COLOR_GRAY2BGRA);
     }
     else {
-        img = oimg.clone();
+//        img = oimg.clone();
+        oimg.copyTo(img);
     }
 
     return 0;

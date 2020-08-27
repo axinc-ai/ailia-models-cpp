@@ -24,5 +24,4 @@ if not "%1" == "-h" if not "%1" == "--help" (
 )
 
 rem execute
-@echo on
 .\%MODEL%.exe %*

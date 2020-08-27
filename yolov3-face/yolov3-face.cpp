@@ -72,6 +72,12 @@ static bool video_mode = false;
 static void print_usage()
 {
     PRINT_OUT("usage: yolov3-face [-h] [-i IMAGE] [-v VIDEO] [-s SAVE_IMAGE_PATH] [-b]\n");
+    return;
+}
+
+
+static void print_help()
+{
     PRINT_OUT("\n");
     PRINT_OUT("yolov3 face detection model\n");
     PRINT_OUT("\n");
@@ -87,7 +93,13 @@ static void print_usage()
     PRINT_OUT("  -b, --benchmark       Running the inference on the same input 5 times to\n");
     PRINT_OUT("                        measure execution performance. (Cannot be used in\n");
     PRINT_OUT("                        video mode)\n");
+    return;
+}
 
+
+static void print_error(std::string arg)
+{
+    PRINT_ERR("yolov3-face: error: unrecognized arguments: %s\n", arg.c_str());
     return;
 }
 
@@ -114,10 +126,12 @@ static int argument_parser(int argc, char **argv)
             }
             else if (arg == "-h" || arg == "--help") {
                 print_usage();
+                print_help();
                 return -1;
             }
             else {
                 print_usage();
+                print_error(arg);
                 return -1;
             }
         }
@@ -127,19 +141,21 @@ static int argument_parser(int argc, char **argv)
                 image_path = arg;
                 break;
             case 2:
-                video_path= arg;
+                video_path = arg;
                 break;
             case 3:
                 save_image_path = arg;
                 break;
             default:
                 print_usage();
+                print_error(arg);
                 return -1;
             }
             status = 0;
         }
         else {
             print_usage();
+            print_error(arg);
             return -1;
         }
     }
@@ -270,7 +286,7 @@ int main(int argc, char **argv)
     int env_id = AILIA_ENVIRONMENT_ID_AUTO;
     status = ailiaCreate(&ailia, env_id, AILIA_MULTITHREAD_AUTO);
     if (status != AILIA_STATUS_SUCCESS) {
-        PRINT_ERR("Error: ailiaCreate failed %d\n", status);
+        PRINT_ERR("ailiaCreate failed %d\n", status);
         return -1;
     }
 

@@ -8,6 +8,7 @@ extern "C" {
 #endif
 
 int adjust_frame_size(cv::Mat& sframe, cv::Mat& dframe, int width, int height);
+int adjust_frame_size(cv::Mat& sframe, cv::Mat& dframe0, cv::Mat& dframe, int d_width, int d_height);
 
 #ifndef __cplusplus
 }
