@@ -38,14 +38,14 @@ xcode-select --install
 OpenCV is also required, it can be installed by running the command.
 
 ```
-?brew install opencv.
+brew install opencv.
 ```
 
 #### Linux
 
 OpenCV is also required, it can be installed by running the command.
 ```
-apt inbstall libopencv-dev
+apt install libopencv-dev
 ```
 
 ### Build
