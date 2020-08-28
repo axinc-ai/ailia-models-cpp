@@ -24,7 +24,7 @@ Copy the files located in the folder [ailia SDK]/l?ibrary/ t?o the folder ./aili
 
 #### Windows
 
-gnumake ?and ?Visual Studio 2015? or newer are required.
+gnumake and Visual Studio 2015 or newer are required.
 http://gnuwin32.sourceforge.net/packages/make.htm
 
 #### Mac
