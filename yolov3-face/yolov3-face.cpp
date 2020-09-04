@@ -311,7 +311,7 @@ int main(int argc, char **argv)
 
     status = ailiaOpenWeightFile(ailia, weight.c_str());
     if (status != AILIA_STATUS_SUCCESS) {
-        PRINT_ERR("ailiaOpenWeightFile failed %d\n", status);;
+        PRINT_ERR("ailiaOpenWeightFile failed %d\n", status);
         ailiaDestroy(ailia);
         return -1;
     }

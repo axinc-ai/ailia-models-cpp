@@ -1,10 +1,10 @@
 ﻿/*******************************************************************
 *
 *    DESCRIPTION:
-*      AILIA yolov3-tiny sample
+*      AILIA resnet50 sample
 *    AUTHOR:
 *
-*    DATE:2020/08/20
+*    DATE:2020/08/27
 *
 *******************************************************************/
 
@@ -15,12 +15,19 @@
 #include <string>
 #include <opencv2/opencv.hpp>
 
+#if defined(_WIN32) || defined(_WIN64)
+#include <windows.h>
+#define sleep(n) Sleep(n*1000)
+#else
+#include <unistd.h>
+#endif
+
 #undef UNICODE
 
 #include "ailia.h"
-#include "ailia_detector.h"
+#include "ailia_classifier.h"
+#include "resnet50_labels.h"
 #include "utils.h"
-#include "detector_utils.h"
 #include "webcamera_utils.h"
 
 
@@ -28,19 +35,16 @@
 // Parameters
 // ======================
 
-#define WEIGHT_PATH "yolov3-tiny.opt.onnx"
-#define MODEL_PATH  "yolov3-tiny.opt.onnx.prototxt"
+#define WEIGHT_PATH "resnet50.opt.onnx"
+#define MODEL_PATH  "resnet50.opt.onnx.prototxt"
 
-#define IMAGE_PATH      "couple.jpg"
-#define SAVE_IMAGE_PATH "output.png"
+#define IMAGE_PATH  "pizza.jpg"
 
-#define MODEL_INPUT_WIDTH  416
-#define MODEL_INPUT_HEIGHT 416
-#define IMAGE_WIDTH        416 // for video mode
-#define IMAGE_HEIGHT       416 // for video mode
+#define IMAGE_WIDTH  224 // for video mode
+#define IMAGE_HEIGHT 224 // for video mode
 
-#define THRESHOLD 0.4f
-#define IOU       0.45f
+#define MAX_CLASS_COUNT 5
+#define SLEEP_TIME      3
 
 #if defined(_WIN32) || defined(_WIN64)
 #define PRINT_OUT(...) fprintf_s(stdout, __VA_ARGS__)
@@ -52,28 +56,13 @@
 
 #define BENCHMARK_ITERS 5
 
+static const std::vector<const char*> MODEL_NAMES = {"resnet50.opt", "resnet50", "resnet50_pytorch"};
+
 static std::string weight(WEIGHT_PATH);
 static std::string model(MODEL_PATH);
 
 static std::string image_path(IMAGE_PATH);
 static std::string video_path("0");
-static std::string save_image_path(SAVE_IMAGE_PATH);
-
-static const std::vector<const char*> COCO_CATEGORY = {
-    "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train",
-    "truck", "boat", "traffic light", "fire hydrant", "stop sign",
-    "parking meter", "bench", "bird", "cat", "dog", "horse", "sheep", "cow",
-    "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella",
-    "handbag", "tie", "suitcase", "frisbee", "skis", "snowboard",
-    "sports ball", "kite", "baseball bat", "baseball glove", "skateboard",
-    "surfboard", "tennis racket", "bottle", "wine glass", "cup", "fork",
-    "knife", "spoon", "bowl", "banana", "apple", "sandwich", "orange",
-    "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair",
-    "couch", "potted plant", "bed", "dining table", "toilet", "tv",
-    "laptop", "mouse", "remote", "keyboard", "cell phone", "microwave",
-    "oven", "toaster", "sink", "refrigerator", "book", "clock", "vase",
-    "scissors", "teddy bear", "hair drier", "toothbrush"
-};
 
 static bool benchmark  = false;
 static bool video_mode = false;
@@ -85,7 +74,7 @@ static bool video_mode = false;
 
 static void print_usage()
 {
-    PRINT_OUT("usage: yolov3-tiny [-h] [-i IMAGE] [-v VIDEO] [-s SAVE_IMAGE_PATH] [-b]\n");
+    PRINT_OUT("usage: resnet50 [-h] [-i IMAGE] [-v VIDEO] [-a ARCH] [-b]\n");
     return;
 }
 
@@ -93,7 +82,7 @@ static void print_usage()
 static void print_help()
 {
     PRINT_OUT("\n");
-    PRINT_OUT("yolov3 tiny model\n");
+    PRINT_OUT("resnet50 ImageNet classification model\n");
     PRINT_OUT("\n");
     PRINT_OUT("optional arguments:\n");
     PRINT_OUT("  -h, --help            show this help message and exit\n");
@@ -102,8 +91,8 @@ static void print_help()
     PRINT_OUT("  -v VIDEO, --video VIDEO\n");
     PRINT_OUT("                        The input video path. If the VIDEO argument is set to\n");
     PRINT_OUT("                        0, the webcam input will be used.\n");
-    PRINT_OUT("  -s SAVE_IMAGE_PATH, --savepath SAVE_IMAGE_PATH\n");
-    PRINT_OUT("                        Save path for the output image.\n");
+    PRINT_OUT("  -a ARCH, --arch ARCH  model architecture: resnet50.opt | resnet50 |\n");
+    PRINT_OUT("                        resnet50_pytorch (default: resnet50.opt)\n");
     PRINT_OUT("  -b, --benchmark       Running the inference on the same input 5 times to\n");
     PRINT_OUT("                        measure execution performance. (Cannot be used in\n");
     PRINT_OUT("                        video mode)\n");
@@ -113,7 +102,21 @@ static void print_help()
 
 static void print_error(std::string arg)
 {
-    PRINT_ERR("yolov3-tiny: error: unrecognized arguments: %s\n", arg.c_str());
+    PRINT_ERR("resnet50: error: unrecognized arguments: %s\n", arg.c_str());
+    return;
+}
+
+
+static void print_arch_error(std::string arg)
+{
+    PRINT_ERR("resnet50: error: argument -a/--arch: invalid choice: \'%s\' (choose from", arg.c_str());
+    for (int i = 0; i < MODEL_NAMES.size(); i++) {
+        PRINT_ERR(" \'%s\'", MODEL_NAMES[i]);
+        if (i < MODEL_NAMES.size() - 1) {
+            PRINT_ERR(",");
+        }
+    }
+    PRINT_ERR(")\n");
     return;
 }
 
@@ -132,7 +135,7 @@ static int argument_parser(int argc, char **argv)
                 video_mode = true;
                 status = 2;
             }
-            else if (arg == "-s" || arg == "--savepath") {
+            else if (arg == "-a" || arg == "--arch") {
                 status = 3;
             }
             else if (arg == "-b" || arg == "--benchmark") {
@@ -158,7 +161,19 @@ static int argument_parser(int argc, char **argv)
                 video_path = arg;
                 break;
             case 3:
-                save_image_path = arg;
+                int j;
+                for (j = 0; j < MODEL_NAMES.size(); j++) {
+                    if (arg == MODEL_NAMES[j]) {
+                        weight = arg + ".onnx";
+                        model  = arg + ".onnx.prototxt";
+                        break;
+                    }
+                }
+                if (j >= MODEL_NAMES.size()) {
+                    print_usage();
+                    print_arch_error(arg);
+                    return -1;
+                }
                 break;
             default:
                 print_usage();
@@ -179,53 +194,90 @@ static int argument_parser(int argc, char **argv)
 
 
 // ======================
+// Utils
+// ======================
+
+static void preprocess_image(cv::Mat simg, cv::Mat& dimg)
+{
+    if (simg.channels() == 3) {
+        cv::cvtColor(simg, dimg, cv::COLOR_BGR2BGRA);
+    }
+    else if (simg.channels() == 1) {
+        cv::cvtColor(simg, dimg, cv::COLOR_GRAY2BGRA);
+    }
+    else {
+//        dimg = simg.clone();
+        simg.copyTo(dimg);
+    }
+
+    return;
+}
+
+
+// ======================
 // Main functions
 // ======================
 
-static int recognize_from_image(AILIADetector* detector)
+static int recognize_from_image(AILIAClassifier *classifier)
 {
     // prepare input data
-    cv::Mat img;
-    int status = load_image(img, image_path.c_str());
-    if (status != AILIA_STATUS_SUCCESS) {
+    cv::Mat simg = cv::imread(image_path.c_str(), cv::IMREAD_UNCHANGED);
+    if (simg.empty()) {
+        PRINT_ERR("\'%s\' image not found\n", image_path.c_str());
         return -1;
     }
-    PRINT_OUT("input image shape: (%d, %d, %d)\n",
-              img.cols, img.rows, img.channels());
+    cv::Mat img;
+    preprocess_image(simg, img);
+//    PRINT_OUT("input image shape: (%d, %d, %d)\n",
+//              img.cols, img.rows, img.channels());
 
     // inference
     PRINT_OUT("Start inference...\n");
+    int status;
     if (benchmark) {
         PRINT_OUT("BENCHMARK mode\n");
         for (int i = 0; i < BENCHMARK_ITERS; i++) {
             clock_t start = clock();
-            status = ailiaDetectorCompute(detector, img.data,
-                                          img.cols*4, img.cols, img.rows,
-                                          AILIA_IMAGE_FORMAT_BGRA, THRESHOLD, IOU);
+            status = ailiaClassifierCompute(classifier, img.data,
+                                            img.cols*4, img.cols, img.rows,
+                                            AILIA_IMAGE_FORMAT_BGRA, MAX_CLASS_COUNT);
             clock_t end = clock();
             if (status != AILIA_STATUS_SUCCESS) {
-                PRINT_ERR("ailiaDetectorCompute failed %d\n", status);
+                PRINT_ERR("ailiaClassifierCompute failed %d\n", status);
                 return -1;
             }
             PRINT_OUT("\tailia processing time %ld ms\n", ((end-start)*1000)/CLOCKS_PER_SEC);
         }
     }
     else {
-        status = ailiaDetectorCompute(detector, img.data,
-                                      img.cols*4, img.cols, img.rows,
-                                      AILIA_IMAGE_FORMAT_BGRA, THRESHOLD, IOU);
+        status = ailiaClassifierCompute(classifier, img.data,
+                                        img.cols*4, img.cols, img.rows,
+                                        AILIA_IMAGE_FORMAT_BGRA, MAX_CLASS_COUNT);
         if (status != AILIA_STATUS_SUCCESS) {
-            PRINT_ERR("ailiaDetectorCompute failed %d\n", status);
+            PRINT_ERR("ailiaClassifierCompute failed %d\n", status);
             return -1;
         }
     }
 
-    status = prot_result(detector, img, COCO_CATEGORY);
+    unsigned int count = 0;
+    status = ailiaClassifierGetClassCount(classifier, &count);
     if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("ailiaClassifierGetClassCount failed %d\n", status);
         return -1;
     }
-
-    cv::imwrite(save_image_path.c_str(), img);
+    count = std::min<unsigned int>(count, MAX_CLASS_COUNT);
+    PRINT_OUT("class_count: %d\n", count);
+    for (unsigned int idx = 0; idx < count; idx++) {
+        AILIAClassifierClass info;
+        status = ailiaClassifierGetClass(classifier, &info, idx, AILIA_CLASSIFIER_CLASS_VERSION);
+        if (status != AILIA_STATUS_SUCCESS) {
+            PRINT_ERR("ailiaClassifierGetClass failed %d\n", status);
+            return -1;
+        }
+        PRINT_OUT("+ idx=%d\n", idx);
+        PRINT_OUT("  category=%d [ %s ]\n", info.category, IMAGENET_CATEGORY[info.category]);
+        PRINT_OUT("  prob=%.18lf\n", info.prob);
+    }
 
     PRINT_OUT("Program finished successfully.\n");
 
@@ -233,7 +285,7 @@ static int recognize_from_image(AILIADetector* detector)
 }
 
 
-static int recognize_from_video(AILIADetector* detector)
+static int recognize_from_video(AILIAClassifier *classifier)
 {
     // inference
     cv::VideoCapture capture;
@@ -256,28 +308,49 @@ static int recognize_from_video(AILIADetector* detector)
     }
 
     while (1) {
-        cv::Mat frame;
-        capture >> frame;
-        if ((char)cv::waitKey(1) == 'q' || frame.empty()) {
+        cv::Mat frame0;
+        capture >> frame0;
+        if ((char)cv::waitKey(1) == 'q') {
             break;
         }
-        cv::Mat resized_img, img;
-        adjust_frame_size(frame, resized_img, IMAGE_WIDTH, IMAGE_HEIGHT);
-        cv::cvtColor(resized_img, img, cv::COLOR_BGR2BGRA);
+        if (frame0.empty()) {
+            continue;
+        }
+        cv::Mat in_frame, frame1, frame;
+        adjust_frame_size(frame0, in_frame, frame1, IMAGE_WIDTH, IMAGE_HEIGHT);
+        preprocess_image(frame1, frame);
 
-        int status = ailiaDetectorCompute(detector, img.data,
-                                          MODEL_INPUT_WIDTH*4, MODEL_INPUT_WIDTH, MODEL_INPUT_HEIGHT,
-                                          AILIA_IMAGE_FORMAT_BGRA, THRESHOLD, IOU);
+        int status = ailiaClassifierCompute(classifier, frame.data,
+                                            frame.cols*4, frame.cols, frame.rows,
+                                            AILIA_IMAGE_FORMAT_BGRA, MAX_CLASS_COUNT);
         if (status != AILIA_STATUS_SUCCESS) {
-            PRINT_ERR("ailiaDetectorCompute failed %d\n", status);
+            PRINT_ERR("ailiaClassifierCompute failed %d\n", status);
             return -1;
         }
 
-        status = prot_result(detector, resized_img, COCO_CATEGORY, false);
+        unsigned int count = 0;
+        status = ailiaClassifierGetClassCount(classifier, &count);
         if (status != AILIA_STATUS_SUCCESS) {
+            PRINT_ERR("ailiaClassifierGetClassCount failed %d\n", status);
             return -1;
         }
-        cv::imshow("frame", resized_img);
+        count = std::min<unsigned int>(count, MAX_CLASS_COUNT);
+        PRINT_OUT("==============================================================\n");
+        PRINT_OUT("class_count: %d\n", count);
+        for (unsigned int idx = 0; idx < count; idx++) {
+            AILIAClassifierClass info;
+            status = ailiaClassifierGetClass(classifier, &info, idx, AILIA_CLASSIFIER_CLASS_VERSION);
+            if (status != AILIA_STATUS_SUCCESS) {
+                PRINT_ERR("ailiaClassifierGetClass failed %d\n", status);
+                return -1;
+            }
+            PRINT_OUT("+ idx=%d\n", idx);
+            PRINT_OUT("  category=%d [ %s ]\n", info.category, IMAGENET_CATEGORY[info.category]);
+            PRINT_OUT("  prob=%.18lf\n", info.prob);
+        }
+
+        cv::imshow("frame", in_frame);
+        sleep(SLEEP_TIME);
     }
     capture.release();
     cv::destroyAllWindows();
@@ -329,38 +402,26 @@ int main(int argc, char **argv)
         ailiaDestroy(ailia);
         return -1;
     }
-    const unsigned int flags = AILIA_DETECTOR_FLAG_NORMAL;
 
-    AILIADetector *detector;
-    status = ailiaCreateDetector(&detector, ailia,
-                                 AILIA_NETWORK_IMAGE_FORMAT_RGB,
-                                 AILIA_NETWORK_IMAGE_CHANNEL_FIRST,
-                                 AILIA_NETWORK_IMAGE_RANGE_UNSIGNED_FP32,
-                                 AILIA_DETECTOR_ALGORITHM_YOLOV3,
-                                 COCO_CATEGORY.size(), flags);
+    AILIAClassifier *classifier;
+    status = ailiaCreateClassifier(&classifier, ailia,
+                                   AILIA_NETWORK_IMAGE_FORMAT_RGB,
+                                   AILIA_NETWORK_IMAGE_CHANNEL_FIRST,
+                                   AILIA_NETWORK_IMAGE_RANGE_SIGNED_INT8);
     if (status != AILIA_STATUS_SUCCESS) {
-        PRINT_ERR("ailiaCreateDetector failed %d\n", status);
-        ailiaDestroy(ailia);
-        return -1;
-    }
-
-    status = ailiaDetectorSetInputShape(detector, MODEL_INPUT_WIDTH, MODEL_INPUT_HEIGHT);
-    if (status != AILIA_STATUS_SUCCESS) {
-        PRINT_ERR("ailiaDetectorSetInputShape(w=%u, h=%u) failed %d\n",
-              MODEL_INPUT_WIDTH, MODEL_INPUT_HEIGHT, status);
-        ailiaDestroyDetector(detector);
+        PRINT_ERR("ailiaCreateClassifier failed %d\n", status);
         ailiaDestroy(ailia);
         return -1;
     }
 
     if (video_mode) {
-        status = recognize_from_video(detector);
+        status = recognize_from_video(classifier);
     }
     else {
-        status = recognize_from_image(detector);
+        status = recognize_from_image(classifier);
     }
 
-    ailiaDestroyDetector(detector);
+    ailiaDestroyClassifier(classifier);
     ailiaDestroy(ailia);
 
     return status;
