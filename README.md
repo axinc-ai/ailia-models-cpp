@@ -61,6 +61,18 @@ make
 
 We are now converting to C++. Please wait to complete conversion.
 
+## Image classification
+
+| Name | Detail | Exported From | Supported Ailia Version |
+|:-----------|------------:|:------------:|:------------:|
+| [resnet50](/resnet50/) | [Deep Residual Learning for Image Recognition]( https://github.com/KaimingHe/deep-residual-networks) | Chainer | 1.2.0 and later |
+
+## Image segmentation
+
+| Name | Detail | Exported From | Supported Ailia Version |
+|:-----------|------------:|:------------:|:------------:|
+| [U-2-Net](/u2net/) | [U^2-Net: Going Deeper with Nested U-Structure for Salient Object Detection](https://github.com/NathanUA/U-2-Net) | Pytorch | 1.2.2 and later |
+
 ## Object detection
 
 | Name | Detail | Exported From | Supported Ailia Version |

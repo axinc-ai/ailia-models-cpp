@@ -4,8 +4,6 @@
 #include <vector>
 #include <opencv2/opencv.hpp>
 
-#include "image_utils.h"
-
 #if defined(_WIN32) || defined(_WIN64)
 #define PRINT_OUT(...) fprintf_s(stdout, __VA_ARGS__)
 #define PRINT_ERR(...) fprintf_s(stderr, __VA_ARGS__)
@@ -15,7 +13,7 @@
 #endif
 
 
-static void transpose(cv::Mat& simg, cv::Mat& dimg,
+static void transpose(cv::Mat simg, cv::Mat& dimg,
                       std::vector<int> swap = {2, 0, 1})
 {
     std::vector<int> size0 = {simg.rows, simg.cols, simg.channels()};
@@ -40,7 +38,7 @@ static void transpose(cv::Mat& simg, cv::Mat& dimg,
 }
 
 
-static void normalize_image(cv::Mat& simg, cv::Mat& dimg, std::string normalize_type)
+static void normalize_image(cv::Mat simg, cv::Mat& dimg, std::string normalize_type)
 {
     if (normalize_type == "255" || normalize_type == "127.5" ||
         normalize_type == "ImageNet") {
@@ -105,13 +103,13 @@ int load_image(cv::Mat& img, const char* path, cv::Size shape,
     if (gen_input_ailia) {
         if (rgb) {
             transpose(mimg2, img, {2, 0, 1});
-            int newsize[] = {1, mimg2.size[0], mimg2.size[1], mimg2.size[2]};
-            img.reshape(1, 4, newsize);
+            std::vector<int> newshape = {1, mimg2.size[0], mimg2.size[1], mimg2.size[2]};
+            img.reshape(1, newshape.size(), &newshape[0]);
         }
         else {
             mimg2.copyTo(img);
-            int newsize[] = {1, 1, mimg2.size[0], mimg2.size[1]};
-            img.reshape(1, 4, newsize);
+            std::vector<int> newshape = {1, 1, mimg2.size[0], mimg2.size[1]};
+            img.reshape(1, newshape.size(), &newshape[0]);
         }
     }
     else {
