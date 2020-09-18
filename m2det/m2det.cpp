@@ -233,7 +233,7 @@ static void nms(std::vector<float>& c_scores, std::vector<box>& c_boxes,
 }
 
 
-static void preprocess(cv::Mat simg, cv::Mat& dimg, int resize = 512,
+static void preprocess(const cv::Mat& simg, cv::Mat& dimg, int resize = 512,
                        std::vector<float> rgb_means = {104, 117, 123},
                        std::vector<int> swap = {2, 0, 1})
 {
@@ -279,7 +279,7 @@ static void gen_colors()
 }
 
 
-static void draw_detection(cv::Mat img, cv::Mat& imgcv,
+static void draw_detection(const cv::Mat& img, cv::Mat& imgcv,
                            std::vector<box> boxes,
                            std::vector<float> scores,
                            std::vector<int> cls_inds)
@@ -310,7 +310,7 @@ static void draw_detection(cv::Mat img, cv::Mat& imgcv,
 // Main functions
 // ======================
 
-static int detect_objects(cv::Mat img, AILIANetwork *detector, ioIndices io_inds,
+static int detect_objects(const cv::Mat& img, AILIANetwork *detector, ioIndices io_inds,
                           std::vector<box>& boxes, std::vector<float>& scores, std::vector<int>& cls_inds)
 {
     int status;

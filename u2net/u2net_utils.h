@@ -8,9 +8,9 @@
 extern "C" {
 #endif
 
-void transform(cv::Mat simg, cv::Mat& dimg, cv::Size scaled_size);
+void transform(const cv::Mat& simg, cv::Mat& dimg, cv::Size scaled_size);
 int  load_image(cv::Mat& image, cv::Size& src_size, const char* path, cv::Size scaled_size);
-int  save_result(cv::Mat pred, const char* path, cv::Size src_size);
+int  save_result(const cv::Mat& pred, const char* path, cv::Size src_size);
 
 #ifndef __cplusplus
 }

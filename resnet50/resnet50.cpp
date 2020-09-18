@@ -197,7 +197,7 @@ static int argument_parser(int argc, char **argv)
 // Utils
 // ======================
 
-static void preprocess_image(cv::Mat simg, cv::Mat& dimg)
+static void preprocess_image(const cv::Mat& simg, cv::Mat& dimg)
 {
     if (simg.channels() == 3) {
         cv::cvtColor(simg, dimg, cv::COLOR_BGR2BGRA);
