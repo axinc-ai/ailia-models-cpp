@@ -5,6 +5,8 @@
 #include <vector>
 #include <opencv2/opencv.hpp>
 
+#include "mat_utils.h"
+
 #if defined(_WIN32) || defined(_WIN64)
 #define PRINT_OUT(...) fprintf_s(stdout, __VA_ARGS__)
 #define PRINT_ERR(...) fprintf_s(stderr, __VA_ARGS__)
@@ -14,32 +16,7 @@
 #endif
 
 
-static void transpose(cv::Mat simg, cv::Mat& dimg,
-                      std::vector<int> swap = {2, 0, 1})
-{
-    std::vector<int> size0 = {simg.rows, simg.cols, simg.channels()};
-    std::vector<int> size1 = {size0[swap[0]], size0[swap[1]], size0[swap[2]]};
-    dimg = cv::Mat_<float>(size1.size(), &size1[0]);
-
-    float* sdata = (float*)simg.data;
-    float* ddata = (float*)dimg.data;
-    int sd[3] = {0, 0, 0};
-    for (int d0 = 0; d0 < size1[0]; d0++) {
-        sd[swap[0]] = d0;
-        for (int d1 = 0; d1 < size1[1] ; d1++) {
-            sd[swap[1]] = d1;
-            for (int d2 = 0; d2 < size1[2]; d2++) {
-                sd[swap[2]] = d2;
-                ddata[d0*size1[1]*size1[2]+d1*size1[2]+d2] = sdata[sd[0]*size0[1]*size0[2]+sd[1]*size0[2]+sd[2]];
-            }
-        }
-    }
-
-    return;
-}
-
-
-void transform(cv::Mat simg, cv::Mat& dimg, cv::Size scaled_size)
+void transform(const cv::Mat& simg, cv::Mat& dimg, cv::Size scaled_size)
 {
     cv::Mat mimg0;
     cv::resize(simg, mimg0, scaled_size, 0, 0);
@@ -89,7 +66,7 @@ int load_image(cv::Mat& image, cv::Size& src_size, const char* path, cv::Size sc
 }
 
 
-static void normalize(cv::Mat simg, cv::Mat& dimg)
+static void normalize(const cv::Mat& simg, cv::Mat& dimg)
 {
     float min = FLT_MAX;
     float max = FLT_MIN;
@@ -111,7 +88,7 @@ static void normalize(cv::Mat simg, cv::Mat& dimg)
 }
 
 
-int save_result(cv::Mat pred, const char* path, cv::Size src_size)
+int save_result(const cv::Mat& pred, const char* path, cv::Size src_size)
 {
     cv::Mat norm, outimg;
     normalize(pred, norm);

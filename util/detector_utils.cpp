@@ -38,7 +38,7 @@ int load_image(cv::Mat& img, const char* path)
 }
 
 
-static cv::Scalar hsv_to_rgb(int h, int s, int v)
+cv::Scalar hsv_to_rgb(int h, int s, int v)
 {
     cv::Mat hsv(1, 1, CV_8UC3, cv::Scalar(h, s, v));
     cv::Mat rgb;

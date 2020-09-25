@@ -4,6 +4,8 @@
 #include <vector>
 #include <opencv2/opencv.hpp>
 
+#include "mat_utils.h"
+
 #if defined(_WIN32) || defined(_WIN64)
 #define PRINT_OUT(...) fprintf_s(stdout, __VA_ARGS__)
 #define PRINT_ERR(...) fprintf_s(stderr, __VA_ARGS__)
@@ -13,62 +15,73 @@
 #endif
 
 
-static void transpose(cv::Mat simg, cv::Mat& dimg,
-                      std::vector<int> swap = {2, 0, 1})
+int normalize_image(const cv::Mat& simg, cv::Mat& dimg, std::string normalize_type)
 {
-    std::vector<int> size0 = {simg.rows, simg.cols, simg.channels()};
-    std::vector<int> size1 = {size0[swap[0]], size0[swap[1]], size0[swap[2]]};
-    dimg = cv::Mat_<unsigned char>(size1.size(), &size1[0]);
-
-    unsigned char* sdata = (unsigned char*)simg.data;
-    unsigned char* ddata = (unsigned char*)dimg.data;
-    int sd[3] = {0, 0, 0};
-    for (int d0 = 0; d0 < size1[0]; d0++) {
-        sd[swap[0]] = d0;
-        for (int d1 = 0; d1 < size1[1] ; d1++) {
-            sd[swap[1]] = d1;
-            for (int d2 = 0; d2 < size1[2]; d2++) {
-                sd[swap[2]] = d2;
-                ddata[d0*size1[1]*size1[2]+d1*size1[2]+d2] = sdata[sd[0]*size0[1]*size0[2]+sd[1]*size0[2]+sd[2]];
+    if (normalize_type == "255" || normalize_type == "127.5" || normalize_type == "ImageNet") {
+        if (normalize_type == "ImageNet") {
+            if (simg.rows > 0 && simg.channels() != 3) {
+                return -1;
+            }
+            else if (simg.rows < 0 && simg.channels() != 3) {
+                if (simg.channels() != 1 || simg.size[simg.dims-1] != 3) {
+                    return -1;
+                }
             }
         }
-    }
+        int size = 1, chan = 1;
+        if (simg.rows > 0) {
+            dimg = cv::Mat(simg.rows, simg.cols, CV_MAKETYPE(CV_32F, simg.channels()));
+            if (normalize_type == "ImageNet") {
+                size = simg.rows*simg.cols;
+                chan = simg.channels();
+            }
+            else {
+                size = simg.rows*simg.cols*simg.channels();
+                chan = 1;
+            }
+        }
+        else {
+            dimg = cv::Mat(simg.dims, simg.size, CV_MAKETYPE(CV_32F, simg.channels()));
+            if (normalize_type == "ImageNet") {
+                for (int i = 0; i < simg.dims-1; i++) {
+                    size *= simg.size[i];
+                }
+                if (simg.channels() == 3) {
+                    size *= simg.size[simg.dims-1];
+                }
+                chan = 3;
+            }
+            else {
+                size = simg.channels();
+                for (int i = 0; i < simg.dims; i++) {
+                    size *= simg.size[i];
+                }
+                chan = 1;
+            }
+        }
 
-    return;
-}
-
-
-static void normalize_image(cv::Mat simg, cv::Mat& dimg, std::string normalize_type)
-{
-    if (normalize_type == "255" || normalize_type == "127.5" ||
-        normalize_type == "ImageNet") {
-        dimg = cv::Mat_<float>(simg.rows, simg.cols, CV_MAKETYPE(CV_32F, simg.channels()));
         unsigned char* sdata = (unsigned char*)simg.data;
         float*         ddata = (float*)dimg.data;
 
         if (normalize_type == "255") {
-            for (int i = 0; i < simg.rows*simg.cols; i++) {
-                for (int c = 0; c < simg.channels(); c++) {
-                    float col = sdata[i*simg.channels()+c];
-                    ddata[i*simg.channels()+c] = col / 255.0f;
-                }
+            for (int i = 0; i < size; i++) {
+                float col = sdata[i];
+                ddata[i] = col / 255.0f;
             }
         }
         else if (normalize_type == "127.5") {
-            for (int i = 0; i < simg.rows*simg.cols; i++) {
-                for (int c = 0; c < simg.channels(); c++) {
-                    float col = sdata[i*simg.channels()+c];
-                    ddata[i*simg.channels()+c] = col / 127.5f - 1.0f;
-                }
+            for (int i = 0; i < size; i++) {
+                float col = sdata[i];
+                ddata[i] = col / 127.5f - 1.0f;
             }
         }
         else if (normalize_type == "ImageNet") {
             float mean[] = {0.485f, 0.456f, 0.406f};
             float std[]  = {0.229f, 0.224f, 0.225f};
-            for (int i = 0; i < simg.rows*simg.cols; i++) {
-                for (int c = 0; c < simg.channels(); c++) {
-                    float col = sdata[i*simg.channels()+c];
-                    ddata[i*simg.channels()+c] = (col/255.0f-mean[c])/std[c];
+            for (int i = 0; i < size; i++) {
+                for (int c = 0; c < chan; c++) {
+                    float col = sdata[i*chan+c];
+                    ddata[i*chan+c] = (col/255.0f-mean[c])/std[c];
                 }
             }
         }
@@ -77,6 +90,8 @@ static void normalize_image(cv::Mat simg, cv::Mat& dimg, std::string normalize_t
 //        dimg = simg.clone();
         simg.copyTo(dimg);
     }
+
+    return 0;
 }
 
 
@@ -97,7 +112,10 @@ int load_image(cv::Mat& img, const char* path, cv::Size shape,
 //        mimg0 = oimg.clone();
         oimg.copyTo(mimg0);
     }
-    normalize_image(mimg0, mimg1, normalize_type);
+    int status = normalize_image(mimg0, mimg1, normalize_type);
+    if (status < 0) {
+        return -1;
+    }
     cv::resize(mimg1, mimg2, shape);
 
     if (gen_input_ailia) {
