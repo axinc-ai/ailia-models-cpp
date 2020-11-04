@@ -18,7 +18,7 @@ https://ailia.jp/en/
 
 ### Install ailia SDK
 
-Copy the files located in the folder [ailia SDK]/l?ibrary/ t?o the folder ./ailia/library/.
+Copy the files located in the folder [ailia SDK]/library/ to the folder ./ailia/library/.
 
 ### Install dependent libraries
 
