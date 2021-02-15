@@ -2,6 +2,9 @@
 #include <stdlib.h>
 #include <opencv2/opencv.hpp>
 
+#include "mat_utils.h"
+#include "image_utils.h"
+
 #if defined(_WIN32) || defined(_WIN64)
 #define PRINT_OUT(...) fprintf_s(stdout, __VA_ARGS__)
 #define PRINT_ERR(...) fprintf_s(stderr, __VA_ARGS__)
@@ -52,6 +55,33 @@ int adjust_frame_size(const cv::Mat& sframe, cv::Mat& dframe0, cv::Mat& dframe, 
     sframe.copyTo(dframe0_roi);
 
     cv::resize(dframe0, dframe, cv::Size(d_width, d_height), 0, 0);
+
+    return 0;
+}
+
+
+int preprocess_frame(const cv::Mat& sframe, cv::Mat& dframe0, cv::Mat& dframe, int d_width, int d_height,
+                     bool rgb, std::string normalize_type)
+{
+    cv::Mat resized_img0;
+    adjust_frame_size(sframe, dframe0, resized_img0, d_width, d_height);
+
+    cv::Mat resized_img1;
+    if (rgb) {
+        cv::cvtColor(resized_img0, resized_img1, cv::COLOR_BGR2RGB);
+    }
+    else {
+        resized_img0.copyTo(resized_img1);
+    }
+
+    cv::Mat data;
+    normalize_image(resized_img1, data, normalize_type);
+    if (rgb) {
+        transpose(data, dframe, {2, 0, 1});
+    }
+    else {
+        cv::cvtColor(data, dframe, cv::COLOR_BGR2GRAY);
+    }
 
     return 0;
 }

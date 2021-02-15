@@ -1,10 +1,10 @@
 ﻿/*******************************************************************
 *
 *    DESCRIPTION:
-*      AILIA yolov3-face sample
+*      AILIA face alignment sample
 *    AUTHOR:
 *
-*    DATE:2020/08/03
+*    DATE:2020/09/23
 *
 *******************************************************************/
 
@@ -18,9 +18,8 @@
 #undef UNICODE
 
 #include "ailia.h"
-#include "ailia_detector.h"
 #include "utils.h"
-#include "detector_utils.h"
+#include "image_utils.h"
 #include "webcamera_utils.h"
 
 
@@ -28,19 +27,16 @@
 // Parameters
 // ======================
 
-#define WEIGHT_PATH "yolov3-face.opt.onnx"
-#define MODEL_PATH  "yolov3-face.opt.onnx.prototxt"
+#define WEIGHT_PATH "face_alignment.onnx"
+#define MODEL_PATH  "face_alignment.onnx.prototxt"
 
-#define IMAGE_PATH      "couple.jpg"
+#define IMAGE_PATH      "aflw-test.jpg"
 #define SAVE_IMAGE_PATH "output.png"
 
-#define MODEL_INPUT_WIDTH  416
-#define MODEL_INPUT_HEIGHT 416
-#define IMAGE_WIDTH        416 // for video mode
-#define IMAGE_HEIGHT       416 // for video mode
+#define IMAGE_WIDTH  256
+#define IMAGE_HEIGHT 256
 
-#define THRESHOLD 0.2f
-#define IOU       0.45f
+#define THRESHOLD 0.1
 
 #if defined(_WIN32) || defined(_WIN64)
 #define PRINT_OUT(...) fprintf_s(stdout, __VA_ARGS__)
@@ -59,8 +55,6 @@ static std::string image_path(IMAGE_PATH);
 static std::string video_path("0");
 static std::string save_image_path(SAVE_IMAGE_PATH);
 
-static const std::vector<const char*> FACE_CATEGORY = {"face"};
-
 static bool benchmark  = false;
 static bool video_mode = false;
 
@@ -71,7 +65,8 @@ static bool video_mode = false;
 
 static void print_usage()
 {
-    PRINT_OUT("usage: yolov3-face [-h] [-i IMAGE] [-v VIDEO] [-s SAVE_IMAGE_PATH] [-b]\n");
+    PRINT_OUT("usage: face_alignment [-h] [-i IMAGEFILE_PATH] [-v VIDEO]\n");
+    PRINT_OUT("                      [-s SAVE_IMAGE_PATH] [-b]\n");
     return;
 }
 
@@ -79,11 +74,11 @@ static void print_usage()
 static void print_help()
 {
     PRINT_OUT("\n");
-    PRINT_OUT("yolov3 face detection model\n");
+    PRINT_OUT("Face alignment model\n");
     PRINT_OUT("\n");
     PRINT_OUT("optional arguments:\n");
     PRINT_OUT("  -h, --help            show this help message and exit\n");
-    PRINT_OUT("  -i IMAGE, --input IMAGE\n");
+    PRINT_OUT("  -i IMAGEFILE_PATH, --input IMAGEFILE_PATH\n");
     PRINT_OUT("                        The input image path.\n");
     PRINT_OUT("  -v VIDEO, --video VIDEO\n");
     PRINT_OUT("                        The input video path. If the VIDEO argument is set to\n");
@@ -99,7 +94,7 @@ static void print_help()
 
 static void print_error(std::string arg)
 {
-    PRINT_ERR("yolov3-face: error: unrecognized arguments: %s\n", arg.c_str());
+    PRINT_ERR("face_alignment: error: unrecognized arguments: %s\n", arg.c_str());
     return;
 }
 
@@ -165,19 +160,73 @@ static int argument_parser(int argc, char **argv)
 
 
 // ======================
+// Utils
+// ======================
+
+//static int plot_images()
+
+static void visualize_plots(cv::Mat& image, const cv::Mat& preds_ailia)
+{
+    float* preds_data = (float*)preds_ailia.data;
+    int rows = preds_ailia.size[1];
+    int cols = preds_ailia.size[2];
+    for (int i = 0; i < preds_ailia.size[0]; i++) {
+        double prob;
+        cv::Point point;
+        cv::Mat probMap = cv::Mat(rows, cols, CV_32FC1, &preds_data[rows*cols*i]);
+        cv::minMaxLoc(probMap, NULL, &prob, NULL, &point);
+        if (prob > THRESHOLD) {
+            float x = ((float)image.cols * point.x) / (float)cols;
+            float y = ((float)image.rows * point.y) / (float)rows;
+            int circle_size = 4;
+            cv::Scalar color = cv::Scalar(0, 255, 255);
+            int thickness = -1;
+            int linetype = 4;
+            cv::circle(image, cv::Point(x, y), circle_size, color, thickness, linetype);
+        }
+    }
+
+    return;
+}
+
+
+// ======================
 // Main functions
 // ======================
 
-static int recognize_from_image(AILIADetector* detector)
+static int recognize_from_image(AILIANetwork *net)
 {
-    // prepare input data
-    cv::Mat img;
-    int status = load_image(img, image_path.c_str());
+    // prepare input data;
+    cv::Mat input_img = cv::imread(image_path.c_str(), -1);
+    if (input_img.empty()) {
+        PRINT_ERR("\'%s\' image not found\n", image_path.c_str());
+        return -1;
+    }
+    cv::Mat input;
+    int status = load_image(input, image_path.c_str(), cv::Size(IMAGE_WIDTH, IMAGE_HEIGHT), true, "255", true);
     if (status != AILIA_STATUS_SUCCESS) {
         return -1;
     }
-    PRINT_OUT("input image shape: (%d, %d, %d)\n",
-              img.cols, img.rows, img.channels());
+
+    AILIAShape input_shape;
+    status = ailiaGetInputShape(net, &input_shape, AILIA_SHAPE_VERSION);
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("ailiaGetInputShape failed %d\n", status);
+        return -1;
+    }
+//    PRINT_OUT("input shape %d %d %d %d %d\n",input_shape.x, input_shape.y, input_shape.z, input_shape.w, input_shape.dim);
+    int input_size = input_shape.x*input_shape.y*input_shape.z*input_shape.w*sizeof(float);
+
+    AILIAShape output_shape;
+    status = ailiaGetOutputShape(net, &output_shape, AILIA_SHAPE_VERSION);
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("ailiaGetOutputShape failed %d\n", status);
+        return -1;
+    }
+//    PRINT_OUT("output shape %d %d %d %d %d\n", output_shape.x, output_shape.y, output_shape.z, output_shape.w, output_shape.dim);
+    int preds_size = output_shape.x*output_shape.y*output_shape.z*output_shape.w*sizeof(float);
+    std::vector<int> shape = {(int)output_shape.z, (int)output_shape.y, (int)output_shape.x};
+    cv::Mat preds_ailia = cv::Mat(shape.size(), &shape[0], CV_32FC1);
 
     // inference
     PRINT_OUT("Start inference...\n");
@@ -185,33 +234,25 @@ static int recognize_from_image(AILIADetector* detector)
         PRINT_OUT("BENCHMARK mode\n");
         for (int i = 0; i < BENCHMARK_ITERS; i++) {
             clock_t start = clock();
-            status = ailiaDetectorCompute(detector, img.data,
-                                          img.cols*4, img.cols, img.rows,
-                                          AILIA_IMAGE_FORMAT_BGRA, THRESHOLD, IOU);
+            status = ailiaPredict(net, preds_ailia.data, preds_size, input.data, input_size);
             clock_t end = clock();
             if (status != AILIA_STATUS_SUCCESS) {
-                PRINT_ERR("ailiaDetectorCompute failed %d\n", status);
+                PRINT_ERR("ailiaPredict failed %d\n", status);
                 return -1;
             }
             PRINT_OUT("\tailia processing time %ld ms\n", ((end-start)*1000)/CLOCKS_PER_SEC);
         }
     }
     else {
-        status = ailiaDetectorCompute(detector, img.data,
-                                      img.cols*4, img.cols, img.rows,
-                                      AILIA_IMAGE_FORMAT_BGRA, THRESHOLD, IOU);
+        status = ailiaPredict(net, preds_ailia.data, preds_size, input.data, input_size);
         if (status != AILIA_STATUS_SUCCESS) {
-            PRINT_ERR("ailiaDetectorCompute failed %d\n", status);
+            PRINT_ERR("ailiaPredict failed %d\n", status);
             return -1;
         }
     }
 
-    status = plot_result(detector, img, FACE_CATEGORY);
-    if (status != AILIA_STATUS_SUCCESS) {
-        return -1;
-    }
-
-    cv::imwrite(save_image_path.c_str(), img);
+    visualize_plots(input_img, preds_ailia);
+    cv::imwrite(save_image_path.c_str(), input_img);
 
     PRINT_OUT("Program finished successfully.\n");
 
@@ -219,9 +260,28 @@ static int recognize_from_image(AILIADetector* detector)
 }
 
 
-static int recognize_from_video(AILIADetector* detector)
+static int recognize_from_video(AILIANetwork *net)
 {
-    // inference
+    AILIAShape input_shape;
+    int status = ailiaGetInputShape(net, &input_shape, AILIA_SHAPE_VERSION);
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("ailiaGetInputShape failed %d\n", status);
+        return -1;
+    }
+//    PRINT_OUT("input shape %d %d %d %d %d\n",input_shape.x, input_shape.y, input_shape.z, input_shape.w, input_shape.dim);
+    int input_size = input_shape.x*input_shape.y*input_shape.z*input_shape.w*sizeof(float);
+
+    AILIAShape output_shape;
+    status = ailiaGetOutputShape(net, &output_shape, AILIA_SHAPE_VERSION);
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("ailiaGetOutputShape failed %d\n", status);
+        return -1;
+    }
+//    PRINT_OUT("output shape %d %d %d %d %d\n", output_shape.x, output_shape.y, output_shape.z, output_shape.w, output_shape.dim);
+    int preds_size = output_shape.x*output_shape.y*output_shape.z*output_shape.w*sizeof(float);
+    std::vector<int> shape = {(int)output_shape.z, (int)output_shape.y, (int)output_shape.x};
+    cv::Mat preds_ailia = cv::Mat(shape.size(), &shape[0], CV_32FC1);
+
     cv::VideoCapture capture;
     if (video_path == "0") {
         PRINT_OUT("[INFO] webcamera mode is activated\n");
@@ -247,23 +307,19 @@ static int recognize_from_video(AILIADetector* detector)
         if ((char)cv::waitKey(1) == 'q' || frame.empty()) {
             break;
         }
-        cv::Mat resized_img, img;
-        adjust_frame_size(frame, resized_img, IMAGE_WIDTH, IMAGE_HEIGHT);
-        cv::cvtColor(resized_img, img, cv::COLOR_BGR2BGRA);
+        cv::Mat input_image, input;
+        preprocess_frame(frame, input_image, input, IMAGE_WIDTH, IMAGE_HEIGHT, true, "255");
 
-        int status = ailiaDetectorCompute(detector, img.data,
-                                          MODEL_INPUT_WIDTH*4, MODEL_INPUT_WIDTH, MODEL_INPUT_HEIGHT,
-                                          AILIA_IMAGE_FORMAT_BGRA, THRESHOLD, IOU);
+        // inference
+        status = ailiaPredict(net, preds_ailia.data, preds_size, input.data, input_size);
         if (status != AILIA_STATUS_SUCCESS) {
-            PRINT_ERR("ailiaDetectorCompute failed %d\n", status);
+            PRINT_ERR("ailiaPredict failed %d\n", status);
             return -1;
         }
 
-        status = plot_result(detector, resized_img, FACE_CATEGORY, false);
-        if (status != AILIA_STATUS_SUCCESS) {
-            return -1;
-        }
-        cv::imshow("frame", resized_img);
+        // post processing
+        visualize_plots(input_image, preds_ailia);
+        cv::imshow("frame", input_image);
     }
     capture.release();
     cv::destroyAllWindows();
@@ -282,72 +338,48 @@ int main(int argc, char **argv)
     }
 
     // net initialize
-    AILIANetwork *ailia;
+    AILIANetwork *net;
     int env_id = AILIA_ENVIRONMENT_ID_AUTO;
-    status = ailiaCreate(&ailia, env_id, AILIA_MULTITHREAD_AUTO);
+    status = ailiaCreate(&net, env_id, AILIA_MULTITHREAD_AUTO);
     if (status != AILIA_STATUS_SUCCESS) {
         PRINT_ERR("ailiaCreate failed %d\n", status);
         return -1;
     }
 
     AILIAEnvironment *env_ptr = nullptr;
-    status = ailiaGetSelectedEnvironment(ailia, &env_ptr, AILIA_ENVIRONMENT_VERSION);
+    status = ailiaGetSelectedEnvironment(net, &env_ptr, AILIA_ENVIRONMENT_VERSION);
     if (status != AILIA_STATUS_SUCCESS) {
         PRINT_ERR("ailiaGetSelectedEnvironment failed %d\n", status);
-        ailiaDestroy(ailia);
+        ailiaDestroy(net);
         return -1;
     }
 
 //    PRINT_OUT("env_id: %d\n", env_ptr->id);
     PRINT_OUT("env_name: %s\n", env_ptr->name);
 
-    status = ailiaOpenStreamFile(ailia, model.c_str());
+    status = ailiaOpenStreamFile(net, model.c_str());
     if (status != AILIA_STATUS_SUCCESS) {
         PRINT_ERR("ailiaOpenStreamFile failed %d\n", status);
-        PRINT_ERR("ailiaGetErrorDetail %s\n", ailiaGetErrorDetail(ailia));
-        ailiaDestroy(ailia);
+        PRINT_ERR("ailiaGetErrorDetail %s\n", ailiaGetErrorDetail(net));
+        ailiaDestroy(net);
         return -1;
     }
 
-    status = ailiaOpenWeightFile(ailia, weight.c_str());
+    status = ailiaOpenWeightFile(net, weight.c_str());
     if (status != AILIA_STATUS_SUCCESS) {
         PRINT_ERR("ailiaOpenWeightFile failed %d\n", status);
-        ailiaDestroy(ailia);
-        return -1;
-    }
-    const unsigned int flags = AILIA_DETECTOR_FLAG_NORMAL;
-
-    AILIADetector *detector;
-    status = ailiaCreateDetector(&detector, ailia,
-                                 AILIA_NETWORK_IMAGE_FORMAT_RGB,
-                                 AILIA_NETWORK_IMAGE_CHANNEL_FIRST,
-                                 AILIA_NETWORK_IMAGE_RANGE_UNSIGNED_FP32,
-                                 AILIA_DETECTOR_ALGORITHM_YOLOV3,
-                                 FACE_CATEGORY.size(), flags);
-    if (status != AILIA_STATUS_SUCCESS) {
-        PRINT_ERR("ailiaCreateDetector failed %d\n", status);
-        ailiaDestroy(ailia);
-        return -1;
-    }
-
-    status = ailiaDetectorSetInputShape(detector, MODEL_INPUT_WIDTH, MODEL_INPUT_HEIGHT);
-    if (status != AILIA_STATUS_SUCCESS) {
-        PRINT_ERR("ailiaDetectorSetInputShape(w=%u, h=%u) failed %d\n",
-              MODEL_INPUT_WIDTH, MODEL_INPUT_HEIGHT, status);
-        ailiaDestroyDetector(detector);
-        ailiaDestroy(ailia);
+        ailiaDestroy(net);
         return -1;
     }
 
     if (video_mode) {
-        status = recognize_from_video(detector);
+        status = recognize_from_video(net);
     }
     else {
-        status = recognize_from_image(detector);
+        status = recognize_from_image(net);
     }
 
-    ailiaDestroyDetector(detector);
-    ailiaDestroy(ailia);
+    ailiaDestroy(net);
 
     return status;
 }
