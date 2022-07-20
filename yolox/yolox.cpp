@@ -86,7 +86,7 @@ static int args_env_id = -1;
 
 static void print_usage()
 {
-    PRINT_OUT("usage: yolov3-tiny [-h] [-i IMAGE] [-v VIDEO] [-s SAVE_IMAGE_PATH] [-b]\n");
+    PRINT_OUT("usage: yolox [-h] [-i IMAGE] [-v VIDEO] [-s SAVE_IMAGE_PATH] [-b] [-e ENV_ID]\n");
     return;
 }
 
@@ -108,8 +108,8 @@ static void print_help()
     PRINT_OUT("  -b, --benchmark       Running the inference on the same input 5 times to\n");
     PRINT_OUT("                        measure execution performance. (Cannot be used in\n");
     PRINT_OUT("                        video mode)\n");
-    PRINT_OUT("  -e ID, --env_id ID\n");
-    PRINT_OUT("                        The environment id.\n");
+    PRINT_OUT("  -e ENV_ID, --env_id ENV_ID\n");
+    PRINT_OUT("                        The backend environment id.\n");
     return;
 }
 
