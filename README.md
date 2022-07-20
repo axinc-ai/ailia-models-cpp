@@ -60,10 +60,7 @@ make
 ### Run
 
 ```
-# model download
-./yolox.sh
-# run model
-./yolox -v 0
+./yolox.sh -v 0
 ```
 
 # Supporting Models
