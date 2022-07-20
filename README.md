@@ -51,10 +51,19 @@ apt install libopencv-dev
 ### Build
 
 ```
-cd yolov3-face
+cd yolox
 export AILIA_LIBRARY_PATH=../ailia/library
 cmake .
 make
+```
+
+### Run
+
+```
+# model download
+./yolox.sh
+# run model
+./yolox -v 0
 ```
 
 # Supporting Models
@@ -80,6 +89,7 @@ We are now converting to C++. Please wait to complete conversion.
 | [yolov3-tiny](/yolov3-tiny/) | [YOLO: Real-Time Object Detection](https://pjreddie.com/darknet/yolo/) | ONNX Runtime | 1.2.1 and later |
 | [yolov3-face](/yolov3-face/) | [YOLO: Real-Time Object Detection](https://pjreddie.com/darknet/yolo/) | ONNX Runtime | 1.2.1 and later |
 | [m2det](/m2det/) | [M2Det: A Single-Shot Object Detector based on Multi-Level Feature Pyramid Network](https://github.com/qijiezhao/M2Det) | Pytorch | 1.2.3 and later |
+| [yolox](/yolox/) | [YOLOX](https://github.com/Megvii-BaseDetection/YOLOX) | Pytorch | 1.2.6 and later |
 
 ## Pose estimation
 
