@@ -335,6 +335,9 @@ int main(int argc, char **argv)
     status = ailiaCreate(&ailia, env_id, AILIA_MULTITHREAD_AUTO);
     if (status != AILIA_STATUS_SUCCESS) {
         PRINT_ERR("ailiaCreate failed %d\n", status);
+        if (status == AILIA_STATUS_LICENSE_NOT_FOUND || status==AILIA_STATUS_LICENSE_EXPIRED){
+            PRINT_OUT("License file not found or expired : please place license file (AILIA.lic)\n");
+        }
         return -1;
     }
 
