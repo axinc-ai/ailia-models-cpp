@@ -3,8 +3,12 @@
 if [ ! "$1" = "-h" ] && [ ! "$1" = "--help" ]; then
     for MODEL in "blazeface" "facemesh" "iris"
     do
-        FILE1="${MODEL}_s.opt.onnx"
-        FILE2="${MODEL}_s.opt.onnx.prototxt"
+        FILE1="${MODEL}.opt.onnx"
+        FILE2="${MODEL}.opt.onnx.prototxt"
+
+        if [ "${MODEL}" == "iris" ]; then
+            MODEL="mediapipe_iris"
+        fi
 
         if [ ! -e ${FILE1} ]; then
             echo "Downloading onnx file... save path: ${FILE1}"

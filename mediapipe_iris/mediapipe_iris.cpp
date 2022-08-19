@@ -38,11 +38,6 @@
 #define IMAGE_PATH      "man.jpg"
 #define SAVE_IMAGE_PATH "output.png"
 
-#define MODEL_INPUT_WIDTH  128
-#define MODEL_INPUT_HEIGHT 128
-#define IMAGE_WIDTH        128 // for video mode
-#define IMAGE_HEIGHT       128 // for video mode
-
 #if defined(_WIN32) || defined(_WIN64)
 #define PRINT_OUT(...) fprintf_s(stdout, __VA_ARGS__)
 #define PRINT_ERR(...) fprintf_s(stderr, __VA_ARGS__)
@@ -180,13 +175,13 @@ static int argument_parser(int argc, char **argv)
 // Main functions
 // ======================
 
-static int recognize_from_image(AILIADetector* detector)
+static int recognize_from_image(AILIANetwork* detection_ailia, AILIANetwork* landmark_ailia, AILIANetwork* landmark2_ailia)
 {
     return AILIA_STATUS_SUCCESS;
 }
 
 
-static int recognize_from_video(AILIADetector* detector)
+static int recognize_from_video(AILIANetwork* detection_ailia, AILIANetwork* landmark_ailia, AILIANetwork* landmark2_ailia)
 {
     return AILIA_STATUS_SUCCESS;
 }
@@ -225,26 +220,126 @@ int main(int argc, char **argv)
         PRINT_OUT("you can select environment using -e option\n");
     }
 
-    // net initialize
-    AILIANetwork *ailia;
-    status = ailiaCreate(&ailia, env_id, AILIA_MULTITHREAD_AUTO);
-    if (status != AILIA_STATUS_SUCCESS) {
-        PRINT_ERR("ailiaCreate failed %d\n", status);
-        if (status == AILIA_STATUS_LICENSE_NOT_FOUND || status==AILIA_STATUS_LICENSE_EXPIRED){
-            PRINT_OUT("License file not found or expired : please place license file (AILIA.lic)\n");
+    // initialize detection net
+    AILIANetwork *detection_ailia;
+    {
+        status = ailiaCreate(&detection_ailia, env_id, AILIA_MULTITHREAD_AUTO);
+        if (status != AILIA_STATUS_SUCCESS) {
+            PRINT_ERR("ailiaCreate failed %d\n", status);
+            if (status == AILIA_STATUS_LICENSE_NOT_FOUND || status==AILIA_STATUS_LICENSE_EXPIRED){
+                PRINT_OUT("License file not found or expired : please place license file (AILIA.lic)\n");
+            }
+            return -1;
         }
-        return -1;
+
+        AILIAEnvironment *env_ptr = nullptr;
+        status = ailiaGetSelectedEnvironment(detection_ailia, &env_ptr, AILIA_ENVIRONMENT_VERSION);
+        if (status != AILIA_STATUS_SUCCESS) {
+            PRINT_ERR("ailiaGetSelectedEnvironment failed %d\n", status);
+            ailiaDestroy(detection_ailia);
+            return -1;
+        }
+
+        PRINT_OUT("selected env name : %s\n", env_ptr->name);
+
+        status = ailiaOpenStreamFile(detection_ailia, detection_model.c_str());
+        if (status != AILIA_STATUS_SUCCESS) {
+            PRINT_ERR("ailiaOpenStreamFile failed %d\n", status);
+            PRINT_ERR("ailiaGetErrorDetail %s\n", ailiaGetErrorDetail(detection_ailia));
+            ailiaDestroy(detection_ailia);
+            return -1;
+        }
+
+        status = ailiaOpenWeightFile(detection_ailia, detection_weight.c_str());
+        if (status != AILIA_STATUS_SUCCESS) {
+            PRINT_ERR("ailiaOpenWeightFile failed %d\n", status);
+            ailiaDestroy(detection_ailia);
+            return -1;
+        }
     }
 
-    AILIAEnvironment *env_ptr = nullptr;
-    status = ailiaGetSelectedEnvironment(ailia, &env_ptr, AILIA_ENVIRONMENT_VERSION);
-    if (status != AILIA_STATUS_SUCCESS) {
-        PRINT_ERR("ailiaGetSelectedEnvironment failed %d\n", status);
-        ailiaDestroy(ailia);
-        return -1;
+    // initialize landmark net
+    AILIANetwork *landmark_ailia;
+    {
+        status = ailiaCreate(&landmark_ailia, env_id, AILIA_MULTITHREAD_AUTO);
+        if (status != AILIA_STATUS_SUCCESS) {
+            PRINT_ERR("ailiaCreate failed %d\n", status);
+            if (status == AILIA_STATUS_LICENSE_NOT_FOUND || status==AILIA_STATUS_LICENSE_EXPIRED){
+                PRINT_OUT("License file not found or expired : please place license file (AILIA.lic)\n");
+            }
+            return -1;
+        }
+
+        AILIAEnvironment *env_ptr = nullptr;
+        status = ailiaGetSelectedEnvironment(landmark_ailia, &env_ptr, AILIA_ENVIRONMENT_VERSION);
+        if (status != AILIA_STATUS_SUCCESS) {
+            PRINT_ERR("ailiaGetSelectedEnvironment failed %d\n", status);
+            ailiaDestroy(landmark_ailia);
+            return -1;
+        }
+
+        status = ailiaOpenStreamFile(landmark_ailia, landmark_model.c_str());
+        if (status != AILIA_STATUS_SUCCESS) {
+            PRINT_ERR("ailiaOpenStreamFile failed %d\n", status);
+            PRINT_ERR("ailiaGetErrorDetail %s\n", ailiaGetErrorDetail(landmark_ailia));
+            ailiaDestroy(landmark_ailia);
+            return -1;
+        }
+
+        status = ailiaOpenWeightFile(landmark_ailia, landmark_weight.c_str());
+        if (status != AILIA_STATUS_SUCCESS) {
+            PRINT_ERR("ailiaOpenWeightFile failed %d\n", status);
+            ailiaDestroy(landmark_ailia);
+            return -1;
+        }
     }
 
-    PRINT_OUT("selected env name : %s\n", env_ptr->name);
+    // initialize landmark2 net
+    AILIANetwork *landmark2_ailia;
+    {
+        status = ailiaCreate(&landmark2_ailia, env_id, AILIA_MULTITHREAD_AUTO);
+        if (status != AILIA_STATUS_SUCCESS) {
+            PRINT_ERR("ailiaCreate failed %d\n", status);
+            if (status == AILIA_STATUS_LICENSE_NOT_FOUND || status==AILIA_STATUS_LICENSE_EXPIRED){
+                PRINT_OUT("License file not found or expired : please place license file (AILIA.lic)\n");
+            }
+            return -1;
+        }
+
+        AILIAEnvironment *env_ptr = nullptr;
+        status = ailiaGetSelectedEnvironment(landmark2_ailia, &env_ptr, AILIA_ENVIRONMENT_VERSION);
+        if (status != AILIA_STATUS_SUCCESS) {
+            PRINT_ERR("ailiaGetSelectedEnvironment failed %d\n", status);
+            ailiaDestroy(landmark2_ailia);
+            return -1;
+        }
+
+        status = ailiaOpenStreamFile(landmark2_ailia, landmark2_model.c_str());
+        if (status != AILIA_STATUS_SUCCESS) {
+            PRINT_ERR("ailiaOpenStreamFile failed %d\n", status);
+            PRINT_ERR("ailiaGetErrorDetail %s\n", ailiaGetErrorDetail(landmark2_ailia));
+            ailiaDestroy(landmark2_ailia);
+            return -1;
+        }
+
+        status = ailiaOpenWeightFile(landmark2_ailia, landmark2_weight.c_str());
+        if (status != AILIA_STATUS_SUCCESS) {
+            PRINT_ERR("ailiaOpenWeightFile failed %d\n", status);
+            ailiaDestroy(landmark2_ailia);
+            return -1;
+        }
+    }
+
+    if (video_mode) {
+        status = recognize_from_video(detection_ailia, landmark_ailia, landmark2_ailia);
+    }
+    else {
+        status = recognize_from_image(detection_ailia, landmark_ailia, landmark2_ailia);
+    }
+
+    ailiaDestroy(detection_ailia);
+    ailiaDestroy(landmark_ailia);
+    ailiaDestroy(landmark2_ailia);
 
     return status;
 }
