@@ -171,12 +171,76 @@ static int argument_parser(int argc, char **argv)
 }
 
 
+static void resize_pad(cv::Mat& img_src, cv::Mat& img_dst, float& scale, int pad[2])
+{
+    int h1, w1, padh, padw;
+    if (img_src.rows >= img_src.cols) {
+        h1 = 256;
+        w1 = 256 * img_src.cols / img_src.rows;
+        padh = 0;
+        padw = 256 - w1;
+        scale = (float)img_src.cols / (float)w1;
+    }
+    else {
+        h1 = 256 * img_src.rows / img_src.cols;
+        w1 = 256;
+        padh = 256 - h1;
+        padw = 0;
+        scale = (float)img_src.rows / (float)h1;
+    }
+
+    int padh1 = padh / 2;
+    int padh2 = padh / 2 + padh % 2;
+    int padw1 = padw / 2;
+    int padw2 = padw / 2 + padw % 2;
+
+    cv::Mat img_bgr;
+    cv:cvtColor(img_src, img_bgr, cv::COLOR_BGRA2BGR);
+
+    cv::Mat img_rsz;
+    cv::resize(img_bgr, img_rsz, cv::Size(w1, h1));
+
+    cv::Mat pad_img;
+    pad_img.create(padh1 + img_rsz.rows + padh2, padw1 + img_rsz.cols + padw2, img_rsz.type());
+    pad_img.setTo(cv::Scalar::all(0));
+    img_rsz.copyTo(pad_img(cv::Rect(padw1, padh1, img_rsz.cols, img_rsz.rows)));
+
+    cv::resize(pad_img, img_dst, cv::Size(128, 128));
+}
+
+
 // ======================
 // Main functions
 // ======================
 
 static int recognize_from_image(AILIANetwork* detection_ailia, AILIANetwork* landmark_ailia, AILIANetwork* landmark2_ailia)
 {
+    // prepare input data
+    cv::Mat img;
+    int status = load_image(img, image_path.c_str());
+    if (status != AILIA_STATUS_SUCCESS) {
+        return -1;
+    }
+    PRINT_OUT("input image shape: (%d, %d, %d)\n",
+              img.cols, img.rows, img.channels());
+
+    cv::Mat img_128;
+    float scale;
+    int pad[2];
+    resize_pad(img, img_128, scale, pad);
+
+    // inference
+    PRINT_OUT("Start inference...\n");
+    if (benchmark) {
+        PRINT_OUT("BENCHMARK mode\n");
+    }
+    else {
+    }
+
+    cv::imwrite(save_image_path.c_str(), img);
+
+    PRINT_OUT("Program finished successfully.\n");
+
     return AILIA_STATUS_SUCCESS;
 }
 
