@@ -209,15 +209,49 @@ static void resize_pad(cv::Mat& img_src, cv::Mat& img_dst, float& scale, int pad
 }
 
 
+static int detect_face(AILIANetwork* ailia_detection, cv::Mat& img_inp, cv::Mat& img_out)
+{
+    int status = AILIA_STATUS_SUCCESS;
+
+    AILIAShape input_shape;
+    status = ailiaGetInputShape(ailia_detection, &input_shape, AILIA_SHAPE_VERSION);
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("ailiaGetInputShape failed %d\n", status);
+        return status;
+    }
+    int input_size = input_shape.x * input_shape.y * input_shape.z * input_shape.w * sizeof(float);
+
+    AILIAShape output_shape;
+    status = ailiaGetOutputShape(ailia_detection, &output_shape, AILIA_SHAPE_VERSION);
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("ailiaGetOutputShape failed %d\n", status);
+        return status;
+    }
+    int output_size = output_shape.x * output_shape.y * output_shape.z * output_shape.w * sizeof(float);
+
+    img_out = cv::Mat(output_shape.y, output_shape.x, CV_32FC1);
+
+    status = ailiaPredict(ailia_detection, img_out.data, output_size, img_inp.data, input_size);
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("ailiaDetectorCompute failed %d\n", status);
+        return status;
+    }
+
+    return AILIA_STATUS_SUCCESS;
+}
+
+
 // ======================
 // Main functions
 // ======================
 
-static int recognize_from_image(AILIANetwork* detection_ailia, AILIANetwork* landmark_ailia, AILIANetwork* landmark2_ailia)
+static int recognize_from_image(AILIANetwork* ailia_detection, AILIANetwork* ailia_landmark, AILIANetwork* ailia_landmark2)
 {
+    int status = AILIA_STATUS_SUCCESS;
+
     // prepare input data
     cv::Mat img;
-    int status = load_image(img, image_path.c_str());
+    status = load_image(img, image_path.c_str());
     if (status != AILIA_STATUS_SUCCESS) {
         return -1;
     }
@@ -229,12 +263,39 @@ static int recognize_from_image(AILIANetwork* detection_ailia, AILIANetwork* lan
     int pad[2];
     resize_pad(img, img_128, scale, pad);
 
+    cv::Mat img_inp;
+    img_128.convertTo(img_inp, CV_32F);
+
+    img_inp.forEach<cv::Point3f>([](cv::Point3f& pixel, const int* position) -> void {
+        pixel.x = pixel.x / 127.5f - 1.0f;
+        pixel.y = pixel.y / 127.5f - 1.0f;
+        pixel.z = pixel.z / 127.5f - 1.0f;
+    });
+
+    // TODO: Expand dims and move axis
+
     // inference
     PRINT_OUT("Start inference...\n");
     if (benchmark) {
         PRINT_OUT("BENCHMARK mode\n");
+        for (int i = 0; i < BENCHMARK_ITERS; i++) {
+            clock_t start = clock();
+            // TODO
+            clock_t end = clock();
+            PRINT_OUT("\tailia processing time %ld ms\n", ((end-start)*1000)/CLOCKS_PER_SEC);
+        }
     }
     else {
+        // face detection
+        cv::Mat img_prd;
+        status = detect_face(ailia_detection, img_inp, img_prd);
+        if (status != AILIA_STATUS_SUCCESS) {
+            PRINT_ERR("ailiaDetectorCompute failed %d\n", status);
+            return -1;
+        }
+
+        // TODO: postprocess
+        // TODO: estimate face landmarks
     }
 
     cv::imwrite(save_image_path.c_str(), img);
@@ -245,7 +306,7 @@ static int recognize_from_image(AILIANetwork* detection_ailia, AILIANetwork* lan
 }
 
 
-static int recognize_from_video(AILIANetwork* detection_ailia, AILIANetwork* landmark_ailia, AILIANetwork* landmark2_ailia)
+static int recognize_from_video(AILIANetwork* ailia_detection, AILIANetwork* ailia_landmark, AILIANetwork* ailia_landmark2)
 {
     return AILIA_STATUS_SUCCESS;
 }
@@ -285,9 +346,9 @@ int main(int argc, char **argv)
     }
 
     // initialize detection net
-    AILIANetwork *detection_ailia;
+    AILIANetwork *ailia_detection;
     {
-        status = ailiaCreate(&detection_ailia, env_id, AILIA_MULTITHREAD_AUTO);
+        status = ailiaCreate(&ailia_detection, env_id, AILIA_MULTITHREAD_AUTO);
         if (status != AILIA_STATUS_SUCCESS) {
             PRINT_ERR("ailiaCreate failed %d\n", status);
             if (status == AILIA_STATUS_LICENSE_NOT_FOUND || status==AILIA_STATUS_LICENSE_EXPIRED){
@@ -297,35 +358,35 @@ int main(int argc, char **argv)
         }
 
         AILIAEnvironment *env_ptr = nullptr;
-        status = ailiaGetSelectedEnvironment(detection_ailia, &env_ptr, AILIA_ENVIRONMENT_VERSION);
+        status = ailiaGetSelectedEnvironment(ailia_detection, &env_ptr, AILIA_ENVIRONMENT_VERSION);
         if (status != AILIA_STATUS_SUCCESS) {
             PRINT_ERR("ailiaGetSelectedEnvironment failed %d\n", status);
-            ailiaDestroy(detection_ailia);
+            ailiaDestroy(ailia_detection);
             return -1;
         }
 
         PRINT_OUT("selected env name : %s\n", env_ptr->name);
 
-        status = ailiaOpenStreamFile(detection_ailia, detection_model.c_str());
+        status = ailiaOpenStreamFile(ailia_detection, detection_model.c_str());
         if (status != AILIA_STATUS_SUCCESS) {
             PRINT_ERR("ailiaOpenStreamFile failed %d\n", status);
-            PRINT_ERR("ailiaGetErrorDetail %s\n", ailiaGetErrorDetail(detection_ailia));
-            ailiaDestroy(detection_ailia);
+            PRINT_ERR("ailiaGetErrorDetail %s\n", ailiaGetErrorDetail(ailia_detection));
+            ailiaDestroy(ailia_detection);
             return -1;
         }
 
-        status = ailiaOpenWeightFile(detection_ailia, detection_weight.c_str());
+        status = ailiaOpenWeightFile(ailia_detection, detection_weight.c_str());
         if (status != AILIA_STATUS_SUCCESS) {
             PRINT_ERR("ailiaOpenWeightFile failed %d\n", status);
-            ailiaDestroy(detection_ailia);
+            ailiaDestroy(ailia_detection);
             return -1;
         }
     }
 
     // initialize landmark net
-    AILIANetwork *landmark_ailia;
+    AILIANetwork *ailia_landmark;
     {
-        status = ailiaCreate(&landmark_ailia, env_id, AILIA_MULTITHREAD_AUTO);
+        status = ailiaCreate(&ailia_landmark, env_id, AILIA_MULTITHREAD_AUTO);
         if (status != AILIA_STATUS_SUCCESS) {
             PRINT_ERR("ailiaCreate failed %d\n", status);
             if (status == AILIA_STATUS_LICENSE_NOT_FOUND || status==AILIA_STATUS_LICENSE_EXPIRED){
@@ -335,33 +396,33 @@ int main(int argc, char **argv)
         }
 
         AILIAEnvironment *env_ptr = nullptr;
-        status = ailiaGetSelectedEnvironment(landmark_ailia, &env_ptr, AILIA_ENVIRONMENT_VERSION);
+        status = ailiaGetSelectedEnvironment(ailia_landmark, &env_ptr, AILIA_ENVIRONMENT_VERSION);
         if (status != AILIA_STATUS_SUCCESS) {
             PRINT_ERR("ailiaGetSelectedEnvironment failed %d\n", status);
-            ailiaDestroy(landmark_ailia);
+            ailiaDestroy(ailia_landmark);
             return -1;
         }
 
-        status = ailiaOpenStreamFile(landmark_ailia, landmark_model.c_str());
+        status = ailiaOpenStreamFile(ailia_landmark, landmark_model.c_str());
         if (status != AILIA_STATUS_SUCCESS) {
             PRINT_ERR("ailiaOpenStreamFile failed %d\n", status);
-            PRINT_ERR("ailiaGetErrorDetail %s\n", ailiaGetErrorDetail(landmark_ailia));
-            ailiaDestroy(landmark_ailia);
+            PRINT_ERR("ailiaGetErrorDetail %s\n", ailiaGetErrorDetail(ailia_landmark));
+            ailiaDestroy(ailia_landmark);
             return -1;
         }
 
-        status = ailiaOpenWeightFile(landmark_ailia, landmark_weight.c_str());
+        status = ailiaOpenWeightFile(ailia_landmark, landmark_weight.c_str());
         if (status != AILIA_STATUS_SUCCESS) {
             PRINT_ERR("ailiaOpenWeightFile failed %d\n", status);
-            ailiaDestroy(landmark_ailia);
+            ailiaDestroy(ailia_landmark);
             return -1;
         }
     }
 
     // initialize landmark2 net
-    AILIANetwork *landmark2_ailia;
+    AILIANetwork *ailia_landmark2;
     {
-        status = ailiaCreate(&landmark2_ailia, env_id, AILIA_MULTITHREAD_AUTO);
+        status = ailiaCreate(&ailia_landmark2, env_id, AILIA_MULTITHREAD_AUTO);
         if (status != AILIA_STATUS_SUCCESS) {
             PRINT_ERR("ailiaCreate failed %d\n", status);
             if (status == AILIA_STATUS_LICENSE_NOT_FOUND || status==AILIA_STATUS_LICENSE_EXPIRED){
@@ -371,39 +432,39 @@ int main(int argc, char **argv)
         }
 
         AILIAEnvironment *env_ptr = nullptr;
-        status = ailiaGetSelectedEnvironment(landmark2_ailia, &env_ptr, AILIA_ENVIRONMENT_VERSION);
+        status = ailiaGetSelectedEnvironment(ailia_landmark2, &env_ptr, AILIA_ENVIRONMENT_VERSION);
         if (status != AILIA_STATUS_SUCCESS) {
             PRINT_ERR("ailiaGetSelectedEnvironment failed %d\n", status);
-            ailiaDestroy(landmark2_ailia);
+            ailiaDestroy(ailia_landmark2);
             return -1;
         }
 
-        status = ailiaOpenStreamFile(landmark2_ailia, landmark2_model.c_str());
+        status = ailiaOpenStreamFile(ailia_landmark2, landmark2_model.c_str());
         if (status != AILIA_STATUS_SUCCESS) {
             PRINT_ERR("ailiaOpenStreamFile failed %d\n", status);
-            PRINT_ERR("ailiaGetErrorDetail %s\n", ailiaGetErrorDetail(landmark2_ailia));
-            ailiaDestroy(landmark2_ailia);
+            PRINT_ERR("ailiaGetErrorDetail %s\n", ailiaGetErrorDetail(ailia_landmark2));
+            ailiaDestroy(ailia_landmark2);
             return -1;
         }
 
-        status = ailiaOpenWeightFile(landmark2_ailia, landmark2_weight.c_str());
+        status = ailiaOpenWeightFile(ailia_landmark2, landmark2_weight.c_str());
         if (status != AILIA_STATUS_SUCCESS) {
             PRINT_ERR("ailiaOpenWeightFile failed %d\n", status);
-            ailiaDestroy(landmark2_ailia);
+            ailiaDestroy(ailia_landmark2);
             return -1;
         }
     }
 
     if (video_mode) {
-        status = recognize_from_video(detection_ailia, landmark_ailia, landmark2_ailia);
+        status = recognize_from_video(ailia_detection, ailia_landmark, ailia_landmark2);
     }
     else {
-        status = recognize_from_image(detection_ailia, landmark_ailia, landmark2_ailia);
+        status = recognize_from_image(ailia_detection, ailia_landmark, ailia_landmark2);
     }
 
-    ailiaDestroy(detection_ailia);
-    ailiaDestroy(landmark_ailia);
-    ailiaDestroy(landmark2_ailia);
+    ailiaDestroy(ailia_detection);
+    ailiaDestroy(ailia_landmark);
+    ailiaDestroy(ailia_landmark2);
 
     return status;
 }
