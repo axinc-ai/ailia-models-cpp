@@ -21,9 +21,12 @@ find_package(OpenCV REQUIRED)
 include_directories(${OpenCV_INCLUDE_DIRS} ${INCLUDE_PATH})
 link_directories(${OpenCV_LIBRARY_DIRS} ${LIBRARY_PATH})
 
+find_package(NumCpp REQUIRED)
+include_directories(${NumCpp_INCLUDE_DIR} ${INCLUDE_PATH})
+
 add_executable(${PROJECT_NAME} ${SRC_FILES})
 
-target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_11)
+target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_14)
 target_link_libraries(${PROJECT_NAME} ailia ${OpenCV_LIBRARIES})
 set (CMAKE_INSTALL_PREFIX ${CMAKE_SOURCE_DIR})
 install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION .)
