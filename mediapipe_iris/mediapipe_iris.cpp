@@ -560,22 +560,23 @@ static int recognize_from_image(AILIANetwork* ailia_detection, AILIANetwork* ail
     int pad[2];
     resize_pad(mat_img, mat_128, scale, pad);
 
-    cv::Mat mat_inp;
-    mat_128.convertTo(mat_inp, CV_32F);
+    cv::Mat mat_inp2c;
+    mat_128.convertTo(mat_inp2c, CV_32F);
 
-    mat_inp.forEach<cv::Point3f>([](cv::Point3f& pixel, const int* position) -> void {
+    mat_inp2c.forEach<cv::Point3f>([](cv::Point3f& pixel, const int* position) -> void {
         pixel.x = pixel.x / 127.5f - 1.0f;
         pixel.y = pixel.y / 127.5f - 1.0f;
         pixel.z = pixel.z / 127.5f - 1.0f;
     });
 
     cv::Mat mat_inp3;
-    reshape_channels_as_dimension(mat_inp, mat_inp3);
+    reshape_channels_as_dimension(mat_inp2c, mat_inp3);
 
-// TODO
-#if 0
-    input_data = np.expand_dims(np.moveaxis(input_data, -1, 0), 0)
-#endif
+    cv::Mat mat_inp3t;
+    transpose(mat_inp3, mat_inp3t);
+
+    cv::Mat mat_inp4;
+    expand_dims(mat_inp3t, mat_inp4, 0);
 
     // inference
     PRINT_OUT("Start inference...\n");
@@ -591,7 +592,7 @@ static int recognize_from_image(AILIANetwork* ailia_detection, AILIANetwork* ail
     else {
         // face detection
         cv::Mat mat_prd;
-        status = detect_face(ailia_detection, mat_inp, mat_prd);
+        status = detect_face(ailia_detection, mat_inp4, mat_prd);
         if (status != AILIA_STATUS_SUCCESS) {
             PRINT_ERR("ailiaDetectorCompute failed %d\n", status);
             return -1;

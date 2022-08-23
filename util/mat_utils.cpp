@@ -55,7 +55,7 @@ void transpose(const cv::Mat& simg, cv::Mat& dimg, std::vector<int> swap = {2, 0
             }
         }
     }
-    else {
+    else if (simg.elemSize1() == sizeof(int)) {
         int* sdata = (int*)simg.data;
         int* ddata = (int*)dimg.data;
         int sd[3] = {0, 0, 0};
@@ -70,18 +70,22 @@ void transpose(const cv::Mat& simg, cv::Mat& dimg, std::vector<int> swap = {2, 0
             }
         }
     }
+    else {
+        PRINT_ERR("transpose: unsupported data type\n");
+        exit(1);
+    }
 
     return;
 }
 
 
-int concatenate(const cv::Mat& simg0, const cv::Mat& simg1, cv::Mat& dimg, int axis)
+void concatenate(const cv::Mat& simg0, const cv::Mat& simg1, cv::Mat& dimg, int axis)
 {
     if (simg0.dims != simg1.dims || simg0.rows*simg1.rows < 0 ||
         simg0.type() != simg0.type() || simg0.elemSize1() != simg1.elemSize1() ||
         axis > simg0.dims) {
-        PRINT_ERR("concatenate failed\n");
-        return -1;
+        PRINT_ERR("concatenate: failed\n");
+        exit(1);
     }
 
     bool ndarray = false;
@@ -114,8 +118,8 @@ int concatenate(const cv::Mat& simg0, const cv::Mat& simg1, cv::Mat& dimg, int a
     int d;
     for (d = 0; d < axis; d++) {
         if (size0[d] != size1[d]) {
-            PRINT_ERR("concatenate failed\n");
-            return -1;
+            PRINT_ERR("concatenate: failed\n");
+            exit(1);
         }
         new_shape.push_back(size0[d]);
         outer *= size0[d];
@@ -126,8 +130,8 @@ int concatenate(const cv::Mat& simg0, const cv::Mat& simg1, cv::Mat& dimg, int a
     int med1 = size1[axis];
     for (d = d + 1; d < dims; d++) {
         if (size0[d] != size1[d]) {
-            PRINT_ERR("concatenate failed\n");
-            return -1;
+            PRINT_ERR("concatenate: failed\n");
+            exit(1);
         }
         new_shape.push_back(size0[d]);
         inner *= size0[d];
@@ -177,7 +181,7 @@ int concatenate(const cv::Mat& simg0, const cv::Mat& simg1, cv::Mat& dimg, int a
             }
         }
     }
-    else {
+    else if (simg0.elemSize1() == sizeof(int)) {
         for (int o = 0; o < outer; o++) {
             int m = 0;
             for (int m0 = 0; m0 < size0[axis]; m0++, m++) {
@@ -196,14 +200,33 @@ int concatenate(const cv::Mat& simg0, const cv::Mat& simg1, cv::Mat& dimg, int a
             }
         }
     }
-
-    return 0;
+    else {
+        PRINT_ERR("concatenate: unsupported data type\n");
+        exit(1);
+    }
 }
 
 
 void reshape_channels_as_dimension(const cv::Mat& simg, cv::Mat& dimg)
 {
-    int size[] = {simg.rows, simg.cols, simg.channels()};
+    int size[] = {simg.rows, simg.cols, 1};
     cv::Mat simg3(3, size, simg.type(), simg.data);
-    dimg = simg3.clone();
+    dimg = simg3.clone().reshape(1);
+    assert(dimg.channels() == 1);
+    assert(simg.total()*simg.elemSize() == dimg.total()*dimg.elemSize());
+}
+
+
+void expand_dims(const cv::Mat& simg, cv::Mat& dimg, int axis)
+{
+    std::vector<int> shape;
+    for (int i = 0; i < simg.dims; i++) {
+        if (i == axis) {
+            shape.push_back(1);
+        }
+        shape.push_back(simg.size[i]);
+    }
+    dimg = simg.clone().reshape(1, shape);
+    assert(dimg.channels() == 1);
+    assert(simg.total()*simg.elemSize() == dimg.total()*dimg.elemSize());
 }

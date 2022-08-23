@@ -9,8 +9,9 @@ extern "C" {
 #endif
 
 void transpose(const cv::Mat& simg, cv::Mat& dimg, std::vector<int> swap = {2, 0, 1});
-int  concatenate(const cv::Mat& simg0, const cv::Mat& simg1, cv::Mat& dimg, int axis);
+void concatenate(const cv::Mat& simg0, const cv::Mat& simg1, cv::Mat& dimg, int axis);
 void reshape_channels_as_dimension(const cv::Mat& simg, cv::Mat& dimg);
+void expand_dims(const cv::Mat& simg, cv::Mat& dimg, int axis);
 
 #ifndef __cplusplus
 }
