@@ -230,3 +230,24 @@ void expand_dims(const cv::Mat& simg, cv::Mat& dimg, int axis)
     assert(dimg.channels() == 1);
     assert(simg.total()*simg.elemSize() == dimg.total()*dimg.elemSize());
 }
+
+void print_shape(const cv::Mat& img, const char* prefix, const char* suffix)
+{
+    if (prefix != nullptr && prefix[0] != 0) {
+        PRINT_OUT("%s", prefix);
+    }
+    PRINT_OUT("(");
+    for (int i = 0; i < img.dims; i++) {
+        if (i > 0) {
+            PRINT_OUT(", ");
+        }
+        PRINT_OUT("%d", img.size[i]);
+    }
+    if (img.dims > 0 && img.channels() > 1) {
+        PRINT_OUT(", %d", img.channels());
+    }
+    PRINT_OUT(")");
+    if (suffix != nullptr && suffix[0] != 0) {
+        PRINT_OUT("%s", suffix);
+    }
+}

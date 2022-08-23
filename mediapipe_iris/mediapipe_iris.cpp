@@ -552,9 +552,7 @@ static int recognize_from_image(AILIANetwork* ailia_detection, AILIANetwork* ail
     if (status != AILIA_STATUS_SUCCESS) {
         return -1;
     }
-    PRINT_OUT("input image shape: (%d, %d, %d)\n",
-              mat_img.cols, mat_img.rows, mat_img.channels());
-
+    print_shape(mat_img, "input image shape: ");
     cv::Mat mat_128;
     float scale;
     int pad[2];
@@ -577,6 +575,8 @@ static int recognize_from_image(AILIANetwork* ailia_detection, AILIANetwork* ail
 
     cv::Mat mat_inp4;
     expand_dims(mat_inp3t, mat_inp4, 0);
+
+    print_shape(mat_inp4, "input data shape: ");
 
     // inference
     PRINT_OUT("Start inference...\n");
