@@ -3,6 +3,7 @@
 set (PROJECT_NAME mediapipe_iris)
 set (SRC_FILES ${PROJECT_NAME}.cpp)
 set (SRC_FILES ${SRC_FILES} ../util/utils.cpp)
+set (SRC_FILES ${SRC_FILES} ../util/mat_utils.cpp)
 set (SRC_FILES ${SRC_FILES} ../util/detector_utils.cpp)
 set (SRC_FILES ${SRC_FILES} ../util/webcamera_utils.cpp)
 set (INCLUDE_PATH $ENV{AILIA_LIBRARY_PATH}/include ../util)
@@ -21,12 +22,9 @@ find_package(OpenCV REQUIRED)
 include_directories(${OpenCV_INCLUDE_DIRS} ${INCLUDE_PATH})
 link_directories(${OpenCV_LIBRARY_DIRS} ${LIBRARY_PATH})
 
-find_package(NumCpp REQUIRED)
-include_directories(${NumCpp_INCLUDE_DIR} ${INCLUDE_PATH})
-
 add_executable(${PROJECT_NAME} ${SRC_FILES})
 
-target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_14)
+target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_11)
 target_link_libraries(${PROJECT_NAME} ailia ${OpenCV_LIBRARIES})
 set (CMAKE_INSTALL_PREFIX ${CMAKE_SOURCE_DIR})
 install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION .)

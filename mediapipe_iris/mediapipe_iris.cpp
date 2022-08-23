@@ -14,13 +14,13 @@
 #include <vector>
 #include <string>
 #include <opencv2/opencv.hpp>
-#include <NumCpp.hpp>
 
 #undef UNICODE
 
 #include "ailia.h"
 #include "ailia_detector.h"
 #include "utils.h"
+#include "mat_utils.h"
 #include "detector_utils.h"
 #include "webcamera_utils.h"
 
@@ -172,22 +172,22 @@ static int argument_parser(int argc, char **argv)
 }
 
 
-static void resize_pad(cv::Mat& img_src, cv::Mat& img_dst, float& scale, int pad[2])
+static void resize_pad(cv::Mat& mat_src, cv::Mat& mat_dst, float& scale, int pad[2])
 {
     int h1, w1, padh, padw;
-    if (img_src.rows >= img_src.cols) {
+    if (mat_src.rows >= mat_src.cols) {
         h1 = 256;
-        w1 = 256 * img_src.cols / img_src.rows;
+        w1 = 256 * mat_src.cols / mat_src.rows;
         padh = 0;
         padw = 256 - w1;
-        scale = (float)img_src.cols / (float)w1;
+        scale = (float)mat_src.cols / (float)w1;
     }
     else {
-        h1 = 256 * img_src.rows / img_src.cols;
+        h1 = 256 * mat_src.rows / mat_src.cols;
         w1 = 256;
         padh = 256 - h1;
         padw = 0;
-        scale = (float)img_src.rows / (float)h1;
+        scale = (float)mat_src.rows / (float)h1;
     }
 
     int padh1 = padh / 2;
@@ -195,18 +195,18 @@ static void resize_pad(cv::Mat& img_src, cv::Mat& img_dst, float& scale, int pad
     int padw1 = padw / 2;
     int padw2 = padw / 2 + padw % 2;
 
-    cv::Mat img_bgr;
-    cv:cvtColor(img_src, img_bgr, cv::COLOR_BGRA2BGR);
+    cv::Mat mat_bgr;
+    cv:cvtColor(mat_src, mat_bgr, cv::COLOR_BGRA2BGR);
 
-    cv::Mat img_rsz;
-    cv::resize(img_bgr, img_rsz, cv::Size(w1, h1));
+    cv::Mat mat_rsz;
+    cv::resize(mat_bgr, mat_rsz, cv::Size(w1, h1));
 
-    cv::Mat pad_img;
-    pad_img.create(padh1 + img_rsz.rows + padh2, padw1 + img_rsz.cols + padw2, img_rsz.type());
-    pad_img.setTo(cv::Scalar::all(0));
-    img_rsz.copyTo(pad_img(cv::Rect(padw1, padh1, img_rsz.cols, img_rsz.rows)));
+    cv::Mat mat_pad;
+    mat_pad.create(padh1 + mat_rsz.rows + padh2, padw1 + mat_rsz.cols + padw2, mat_rsz.type());
+    mat_pad.setTo(cv::Scalar::all(0));
+    mat_rsz.copyTo(mat_pad(cv::Rect(padw1, padh1, mat_rsz.cols, mat_rsz.rows)));
 
-    cv::resize(pad_img, img_dst, cv::Size(128, 128));
+    cv::resize(mat_pad, mat_dst, cv::Size(128, 128));
 }
 
 
@@ -506,7 +506,7 @@ def iris_postprocess(eyes, iris, origins, affines):
 #endif
 
 
-static int detect_face(AILIANetwork* ailia_detection, cv::Mat& img_inp, cv::Mat& img_out)
+static int detect_face(AILIANetwork* ailia_detection, cv::Mat& mat_inp, cv::Mat& mat_out)
 {
     int status = AILIA_STATUS_SUCCESS;
 
@@ -526,9 +526,9 @@ static int detect_face(AILIANetwork* ailia_detection, cv::Mat& img_inp, cv::Mat&
     }
     int output_size = output_shape.x * output_shape.y * output_shape.z * output_shape.w * sizeof(float);
 
-    img_out = cv::Mat(output_shape.y, output_shape.x, CV_32FC1);
+    mat_out = cv::Mat(output_shape.y, output_shape.x, CV_32FC1);
 
-    status = ailiaPredict(ailia_detection, img_out.data, output_size, img_inp.data, input_size);
+    status = ailiaPredict(ailia_detection, mat_out.data, output_size, mat_inp.data, input_size);
     if (status != AILIA_STATUS_SUCCESS) {
         PRINT_ERR("ailiaDetectorCompute failed %d\n", status);
         return status;
@@ -547,31 +547,33 @@ static int recognize_from_image(AILIANetwork* ailia_detection, AILIANetwork* ail
     int status = AILIA_STATUS_SUCCESS;
 
     // prepare input data
-    cv::Mat img;
-    status = load_image(img, image_path.c_str());
+    cv::Mat mat_img;
+    status = load_image(mat_img, image_path.c_str());
     if (status != AILIA_STATUS_SUCCESS) {
         return -1;
     }
     PRINT_OUT("input image shape: (%d, %d, %d)\n",
-              img.cols, img.rows, img.channels());
+              mat_img.cols, mat_img.rows, mat_img.channels());
 
-    cv::Mat img_128;
+    cv::Mat mat_128;
     float scale;
     int pad[2];
-    resize_pad(img, img_128, scale, pad);
+    resize_pad(mat_img, mat_128, scale, pad);
 
-    cv::Mat img_inp;
-    img_128.convertTo(img_inp, CV_32F);
+    cv::Mat mat_inp;
+    mat_128.convertTo(mat_inp, CV_32F);
 
-    img_inp.forEach<cv::Point3f>([](cv::Point3f& pixel, const int* position) -> void {
+    mat_inp.forEach<cv::Point3f>([](cv::Point3f& pixel, const int* position) -> void {
         pixel.x = pixel.x / 127.5f - 1.0f;
         pixel.y = pixel.y / 127.5f - 1.0f;
         pixel.z = pixel.z / 127.5f - 1.0f;
     });
 
+    cv::Mat mat_inp3;
+    reshape_channels_as_dimension(mat_inp, mat_inp3);
+
 // TODO
 #if 0
-    input_data = img_inp.astype('float32') / 127.5 - 1.0
     input_data = np.expand_dims(np.moveaxis(input_data, -1, 0), 0)
 #endif
 
@@ -583,13 +585,13 @@ static int recognize_from_image(AILIANetwork* ailia_detection, AILIANetwork* ail
             clock_t start = clock();
             // TODO
             clock_t end = clock();
-            PRINT_OUT("\tailia processing time %ld ms\n", ((end-start)*1000)/CLOCKS_PER_SEC);
+            PRINT_OUT("\tailia processing time %ld ms\n", ((end - start) * 1000) / CLOCKS_PER_SEC);
         }
     }
     else {
         // face detection
-        cv::Mat img_prd;
-        status = detect_face(ailia_detection, img_inp, img_prd);
+        cv::Mat mat_prd;
+        status = detect_face(ailia_detection, mat_inp, mat_prd);
         if (status != AILIA_STATUS_SUCCESS) {
             PRINT_ERR("ailiaDetectorCompute failed %d\n", status);
             return -1;
@@ -620,7 +622,7 @@ static int recognize_from_image(AILIANetwork* ailia_detection, AILIANetwork* ail
 #endif
     }
 
-    cv::imwrite(save_image_path.c_str(), img);
+    cv::imwrite(save_image_path.c_str(), mat_img);
 
     PRINT_OUT("Program finished successfully.\n");
 

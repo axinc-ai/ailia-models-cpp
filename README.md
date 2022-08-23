@@ -41,22 +41,11 @@ OpenCV is required, it can be installed by running the command.
 brew install opencv.
 ```
 
-NumCpp is required, it can be installed by running the command.
-
-```
-brew install numcpp.
-```
-
 #### Linux
 
 OpenCV is required, it can be installed by running the command.
 ```
 apt install libopencv-dev
-```
-
-NumCpp is required, it can be installed by running the command.
-```
-(TODO)
 ```
 
 ### Build

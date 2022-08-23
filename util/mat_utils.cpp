@@ -199,3 +199,11 @@ int concatenate(const cv::Mat& simg0, const cv::Mat& simg1, cv::Mat& dimg, int a
 
     return 0;
 }
+
+
+void reshape_channels_as_dimension(const cv::Mat& simg, cv::Mat& dimg)
+{
+    int size[] = {simg.rows, simg.cols, simg.channels()};
+    cv::Mat simg3(3, size, simg.type(), simg.data);
+    dimg = simg3.clone();
+}
