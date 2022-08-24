@@ -647,7 +647,7 @@ static void weighted_non_max_suppression(const std::vector<cv::Mat> &detections,
 }
 
 
-int postprocess(const cv::Mat& raw_box, const cv::Mat& raw_score, std::vector<cv::Mat>& detections)
+int blazeface_postprocess(const cv::Mat& raw_box, const cv::Mat& raw_score, std::vector<cv::Mat>& detections)
 {
     float score_thresh = 100.0f;
     float min_score_thresh = 0.75f;

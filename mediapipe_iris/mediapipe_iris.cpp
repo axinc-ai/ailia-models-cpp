@@ -23,6 +23,7 @@
 #include "mat_utils.h"
 #include "detector_utils.h"
 #include "webcamera_utils.h"
+#include "blazeface_utils.h"
 
 
 // ======================
@@ -212,140 +213,6 @@ static void resize_pad(cv::Mat& mat_src, cv::Mat& mat_dst, float& scale, int pad
 
 // TODO
 #if 0
-def decode_boxes(raw_boxes, anchors):
-    boxes = np.zeros_like(raw_boxes)
-
-    x_center = raw_boxes[..., 0] / x_scale * anchors[:, 2] + anchors[:, 0]
-    y_center = raw_boxes[..., 1] / y_scale * anchors[:, 3] + anchors[:, 1]
-
-    w = raw_boxes[..., 2] / w_scale * anchors[:, 2]
-    h = raw_boxes[..., 3] / h_scale * anchors[:, 3]
-
-    boxes[..., 0] = y_center - h / 2.  # ymin
-    boxes[..., 1] = x_center - w / 2.  # xmin
-    boxes[..., 2] = y_center + h / 2.  # ymax
-    boxes[..., 3] = x_center + w / 2.  # xmax
-
-    for k in range(num_keypoints):
-        offset = 4 + k*2
-        keypoint_x = raw_boxes[..., offset] / x_scale * anchors[:, 2] + anchors[:, 0]
-        keypoint_y = raw_boxes[..., offset + 1] / y_scale * anchors[:, 3] + anchors[:, 1]
-        boxes[..., offset] = keypoint_x
-        boxes[..., offset + 1] = keypoint_y
-
-    return boxes
-
-
-def raw_output_to_detections(raw_box, raw_score, anchors):
-    detection_boxes = decode_boxes(raw_box, anchors)
-
-    thresh = 100.0
-    raw_score = raw_score.clip(-thresh, thresh)
-    # (instead of defining our own sigmoid function which yields a warning)
-    # expit = sigmoid
-    detection_scores = expit(raw_score).squeeze(axis=-1)
-
-    # Note: we stripped off the last dimension from the scores tensor
-    # because there is only has one class. Now we can simply use a mask
-    # to filter out the boxes with too low confidence.
-    mask = detection_scores >= min_score_thresh
-
-    # Because each image from the batch can have a different number of
-    # detections, process them one at a time using a loop.
-    output_detections = []
-    for i in range(raw_box.shape[0]):
-        boxes = detection_boxes[i, mask[i]]
-        scores = np.expand_dims(detection_scores[i, mask[i]], axis=-1)
-        output_detections.append(np.concatenate((boxes, scores), axis=-1))
-
-    return output_detections
-
-
-def intersect(box_a, box_b):
-    A = box_a.shape[0]
-    B = box_b.shape[0]
-    max_xy = np.minimum(
-        np.repeat(np.expand_dims(box_a[:, 2:], axis=1), B, axis=1),
-        np.repeat(np.expand_dims(box_b[:, 2:], axis=0), A, axis=0),
-
-    )
-    min_xy = np.maximum(
-        np.repeat(np.expand_dims(box_a[:, :2], axis=1), B, axis=1),
-        np.repeat(np.expand_dims(box_b[:, :2], axis=0), A, axis=0),
-
-    )
-    inter = np.clip((max_xy - min_xy), 0, None)
-    return inter[:, :, 0] * inter[:, :, 1]
-
-
-def jaccard(box_a, box_b):
-    inter = intersect(box_a, box_b)
-    area_a = np.repeat(
-        np.expand_dims(
-            (box_a[:, 2]-box_a[:, 0]) * (box_a[:, 3]-box_a[:, 1]),
-            axis=1,
-        ),
-        inter.shape[1],
-        axis=1,
-    )  # [A,B]
-    area_b = np.repeat(
-        np.expand_dims(
-            (box_b[:, 2]-box_b[:, 0]) * (box_b[:, 3]-box_b[:, 1]),
-            axis=0,
-        ),
-        inter.shape[0],
-        axis=0,
-    )  # [A,B]
-    union = area_a + area_b - inter
-    return inter / union  # [A,B]
-
-
-def overlap_similarity(box, other_boxes):
-    return jaccard(np.expand_dims(box, axis=0), other_boxes).squeeze(0)
-
-
-def weighted_non_max_suppression(detections):
-    if len(detections) == 0:
-        return []
-
-    output_detections = []
-
-    # Sort the detections from highest to lowest score.
-    # argsort() returns ascending order, therefore read the array from end
-    remaining = np.argsort(detections[:, num_coords])[::-1]
-
-    while len(remaining) > 0:
-        detection = detections[remaining[0]]
-
-        # Compute the overlap between the first box and the other
-        # remaining boxes. (Note that the other_boxes also include
-        # the first_box.)
-        first_box = detection[:4]
-        other_boxes = detections[remaining, :4]
-        ious = overlap_similarity(first_box, other_boxes)
-
-        # If two detections don't overlap enough, they are considered
-        # to be from different faces.
-        mask = ious > min_suppression_threshold
-        overlapping = remaining[mask]
-        remaining = remaining[~mask]
-
-        # Take an average of the coordinates from the overlapping
-        # detections, weighted by their confidence scores.
-        weighted_detection = detection.copy()
-        if len(overlapping) > 1:
-            coordinates = detections[overlapping, :num_coords]
-            scores = detections[overlapping, num_coords:num_coords+1]
-            total_score = scores.sum()
-            weighted = (coordinates * scores).sum(axis=0) / total_score
-            weighted_detection[:num_coords] = weighted
-            weighted_detection[num_coords] = total_score / len(overlapping)
-
-        output_detections.append(weighted_detection)
-
-    return output_detections
-
-
 def denormalize_detections(detections, scale, pad):
     detections[:, 0] = detections[:, 0] * scale * 256 - pad[0]
     detections[:, 1] = detections[:, 1] * scale * 256 - pad[1]
@@ -355,38 +222,8 @@ def denormalize_detections(detections, scale, pad):
     detections[:, 4::2] = detections[:, 4::2] * scale * 256 - pad[1]
     detections[:, 5::2] = detections[:, 5::2] * scale * 256 - pad[0]
     return detections
-#endif
 
 
-static int detector_postprocess(const cv::Mat& mat_raw_box, const cv::Mat& mat_raw_score, cv::Mat& mat_detections, const char* anchor_path = "anchors.npy")
-{
-    int status = AILIA_STATUS_SUCCESS;
-
-    print_shape(mat_raw_box, "raw box shape: ");
-    print_shape(mat_raw_score, "raw score shape: ");
-
-#if 0
-    anchors = np.load(anchor_path).astype("float32")
-
-    # Postprocess the raw predictions:
-    detections = raw_output_to_detections(raw_box, raw_score, anchors)
-
-    # Non-maximum suppression to remove overlapping detections:
-    filtered_detections = []
-    for i in range(len(detections)):
-        faces = weighted_non_max_suppression(detections[i])
-        faces = np.stack(faces) if len(faces) > 0 else np.zeros((0, num_coords+1))
-        filtered_detections.append(faces)
-
-    return filtered_detections
-#endif
-
-    return status;
-}
-
-
-// TODO
-#if 0
 def detection2roi(detection, detection2roi_method='box'):
     if detection2roi_method == 'box':
         # compute box center and scale
@@ -632,25 +469,25 @@ static int recognize_from_image(AILIANetwork* ailia_detection, AILIANetwork* ail
     int pad[2];
     resize_pad(mat_img, mat_128, scale, pad);
 
-    cv::Mat mat_inp2c;
-    mat_128.convertTo(mat_inp2c, CV_32F);
+    cv::Mat mat_input2c;
+    mat_128.convertTo(mat_input2c, CV_32F);
 
-    mat_inp2c.forEach<cv::Point3f>([](cv::Point3f& pixel, const int* position) -> void {
+    mat_input2c.forEach<cv::Point3f>([](cv::Point3f& pixel, const int* position) -> void {
         pixel.x = pixel.x / 127.5f - 1.0f;
         pixel.y = pixel.y / 127.5f - 1.0f;
         pixel.z = pixel.z / 127.5f - 1.0f;
     });
 
-    cv::Mat mat_inp3;
-    reshape_channels_as_dimension(mat_inp2c, mat_inp3);
+    cv::Mat mat_input3;
+    reshape_channels_as_dimension(mat_input2c, mat_input3);
 
-    cv::Mat mat_inp3t;
-    transpose(mat_inp3, mat_inp3t);
+    cv::Mat mat_input3t;
+    transpose(mat_input3, mat_input3t);
 
-    cv::Mat mat_inp4;
-    expand_dims(mat_inp3t, mat_inp4, 0);
+    cv::Mat mat_input4;
+    expand_dims(mat_input3t, mat_input4, 0);
 
-    print_shape(mat_inp4, "input data shape: ");
+    print_shape(mat_input4, "input data shape: ");
 
     // inference
     PRINT_OUT("Start inference...\n");
@@ -665,17 +502,20 @@ static int recognize_from_image(AILIANetwork* ailia_detection, AILIANetwork* ail
     }
     else {
         // face detection
-        std::vector<cv::Mat> mat_prd(2);
-        status = detect_face(ailia_detection, mat_inp4, mat_prd);
+        std::vector<cv::Mat> mat_predictions(2);
+        status = detect_face(ailia_detection, mat_input4, mat_predictions);
         if (status != AILIA_STATUS_SUCCESS) {
             return -1;
         }
 
-        cv::Mat mat_det;
-        status = detector_postprocess(mat_prd[0], mat_prd[1], mat_det);
+        std::vector<cv::Mat> mat_detections;
+        status = blazeface_postprocess(mat_predictions[0], mat_predictions[1], mat_detections);
         if (status != AILIA_STATUS_SUCCESS) {
+            PRINT_ERR("blazeface_postprocess failed %d\n", status);
             return -1;
         }
+
+        printf("detections count: %lu\n", mat_detections.size());
 
 // TODO
 #if 0
