@@ -21,6 +21,7 @@
 #include "ailia_detector.h"
 #include "utils.h"
 #include "mat_utils.h"
+#include "image_utils.h"
 #include "detector_utils.h"
 #include "webcamera_utils.h"
 #include "blazeface_utils.h"
@@ -196,11 +197,8 @@ static void resize_pad(cv::Mat& mat_src, cv::Mat& mat_dst, float& scale, int pad
     int padw1 = padw / 2;
     int padw2 = padw / 2 + padw % 2;
 
-    cv::Mat mat_bgr;
-    cv:cvtColor(mat_src, mat_bgr, cv::COLOR_BGRA2BGR);
-
     cv::Mat mat_rsz;
-    cv::resize(mat_bgr, mat_rsz, cv::Size(w1, h1));
+    cv::resize(mat_src, mat_rsz, cv::Size(w1, h1));
 
     cv::Mat mat_pad;
     mat_pad.create(padh1 + mat_rsz.rows + padh2, padw1 + mat_rsz.cols + padw2, mat_rsz.type());
@@ -464,22 +462,20 @@ static int recognize_from_image(AILIANetwork* ailia_detection, AILIANetwork* ail
         return -1;
     }
     print_shape(mat_img, "input image shape: ");
+
+    cv::Mat mat_bgr;
+    cv:cvtColor(mat_img, mat_bgr, cv::COLOR_BGRA2BGR);
+
     cv::Mat mat_128;
     float scale;
     int pad[2];
-    resize_pad(mat_img, mat_128, scale, pad);
+    resize_pad(mat_bgr, mat_128, scale, pad);
 
-    cv::Mat mat_input2c;
-    mat_128.convertTo(mat_input2c, CV_32F);
-
-    mat_input2c.forEach<cv::Point3f>([](cv::Point3f& pixel, const int* position) -> void {
-        pixel.x = pixel.x / 127.5f - 1.0f;
-        pixel.y = pixel.y / 127.5f - 1.0f;
-        pixel.z = pixel.z / 127.5f - 1.0f;
-    });
+    cv::Mat mat_input2n;
+    normalize_image(mat_128, mat_input2n, "127.5");
 
     cv::Mat mat_input3;
-    reshape_channels_as_dimension(mat_input2c, mat_input3);
+    reshape_channels_as_dimension(mat_input2n, mat_input3);
 
     cv::Mat mat_input3t;
     transpose(mat_input3, mat_input3t);
