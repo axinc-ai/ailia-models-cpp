@@ -209,9 +209,12 @@ static void resize_pad(cv::Mat& mat_src, cv::Mat& mat_dst, float& scale, int pad
 }
 
 
+static void denormalize_detections(cv::Mat& mat_detection, float scale, int pad[2])
+{
+    print_shape(mat_detection, "detection shape: ");
+
 // TODO
 #if 0
-def denormalize_detections(detections, scale, pad):
     detections[:, 0] = detections[:, 0] * scale * 256 - pad[0]
     detections[:, 1] = detections[:, 1] * scale * 256 - pad[1]
     detections[:, 2] = detections[:, 2] * scale * 256 - pad[0]
@@ -220,28 +223,19 @@ def denormalize_detections(detections, scale, pad):
     detections[:, 4::2] = detections[:, 4::2] * scale * 256 - pad[1]
     detections[:, 5::2] = detections[:, 5::2] * scale * 256 - pad[0]
     return detections
+#endif
+}
 
 
-def detection2roi(detection, detection2roi_method='box'):
-    if detection2roi_method == 'box':
-        # compute box center and scale
-        # use mediapipe/calculators/util/detections_to_rects_calculator.cc
-        xc = (detection[:, 1] + detection[:, 3]) / 2
-        yc = (detection[:, 0] + detection[:, 2]) / 2
-        scale = (detection[:, 3] - detection[:, 1])  # assumes square boxes
-
-    elif detection2roi_method == 'alignment':
-        # compute box center and scale
-        # use mediapipe/calculators/util/alignment_points_to_rects_calculator.cc
-        xc = detection[:, 4+2*kp1]
-        yc = detection[:, 4+2*kp1+1]
-        x1 = detection[:, 4+2*kp2]
-        y1 = detection[:, 4+2*kp2+1]
-        scale = np.sqrt(((xc-x1)**2 + (yc-y1)**2)) * 2
-    else:
-        raise NotImplementedError(
-            "detection2roi_method [%s] not supported" % detection2roi_method
-        )
+static void detection2roi(cv::Mat& mat_detection, cv::Mat& mat_xc, cv::Mat& mat_yc, cv::Mat& mat_scale, cv::Mat& mat_theta)
+{
+// TODO
+#if 0
+    # compute box center and scale
+    # use mediapipe/calculators/util/detections_to_rects_calculator.cc
+    xc = (detection[:, 1] + detection[:, 3]) / 2
+    yc = (detection[:, 0] + detection[:, 2]) / 2
+    scale = (detection[:, 3] - detection[:, 1])  # assumes square boxes
 
     yc += dy * scale
     scale *= dscale
@@ -253,9 +247,14 @@ def detection2roi(detection, detection2roi_method='box'):
     y1 = detection[:, 4+2*kp2+1]
     theta = np.arctan2(y0-y1, x0-x1) - theta0
     return xc, yc, scale, theta
+#endif
+}
 
 
-def extract_roi(frame, xc, yc, theta, scale):
+static void extract_roi(const cv::Mat& mat_input, cv::Mat& mat_xc, cv::Mat& mat_yc, cv::Mat& mat_scale, cv::Mat& mat_theta, cv::Mat& mat_images, cv::Mat& mat_affines)
+{
+// TODO
+#if 0
     # take points on unit square and transform them according to the roi
     points = np.array([[-1, -1, 1, 1], [-1, 1, -1, 1]]).reshape(1, 2, 4)
     points = points * scale.reshape(-1, 1, 1)/2
@@ -276,7 +275,7 @@ def extract_roi(frame, xc, yc, theta, scale):
     for i in range(points.shape[0]):
         pts = points[i, :, :3].T.astype('float32')
         M = cv2.getAffineTransform(pts, points1)
-        img = cv2.warpAffine(frame, M, (res, res), borderValue=127.5)
+        img = cv2.warpAffine(input, M, (res, res), borderValue=127.5)
         imgs.append(img)
         affine = cv2.invertAffineTransform(M).astype('float32')
         affines.append(affine)
@@ -288,16 +287,26 @@ def extract_roi(frame, xc, yc, theta, scale):
         affines = np.zeros((0, 2, 3))
 
     return imgs, affines, points
+#endif
+}
 
 
-def estimator_preprocess(src_img, detections, scale, pad):
-    detections = denormalize_detections(detections[0], scale, pad)
-    xc, yc, scale, theta = detection2roi(detections)
-    img, affine, box = extract_roi(src_img, xc, yc, theta, scale)
+static int estimator_preprocess(const cv::Mat& mat_input, cv::Mat& mat_detection, float scale, int pad[2], cv::Mat& mat_images, cv::Mat& mat_affines)
+{
+    int status = AILIA_STATUS_SUCCESS;
 
-    return img, affine, box
+    denormalize_detections(mat_detection, scale, pad);
+
+    cv::Mat mat_xc, mat_yc, mat_scale, mat_theta;
+    detection2roi(mat_detection, mat_xc, mat_yc, mat_scale, mat_theta);
+    extract_roi(mat_input, mat_xc, mat_yc, mat_scale, mat_theta, mat_images, mat_affines);
+
+    return status;
+}
 
 
+// TODO
+#if 0
 def denormalize_landmarks(landmarks, affines):
     landmarks = landmarks.reshape((landmarks.shape[0], -1, 3))
     landmarks[:, :, :2] *= resolution
@@ -511,16 +520,17 @@ static int recognize_from_image(AILIANetwork* ailia_detection, AILIANetwork* ail
             return -1;
         }
 
-        printf("detections count: %lu\n", mat_detections.size());
-        print_shape(mat_detections[0], "detections shape: ");
+        if (mat_detections.size() > 0) {
+            // face landmark estimation
+            cv::Mat mat_images, mat_affines;
+            status = estimator_preprocess(mat_rgb, mat_detections[0], scale, pad, mat_images, mat_affines);
+            if (status != AILIA_STATUS_SUCCESS) {
+                PRINT_ERR("estimator_preprocess failed %d\n", status);
+                return -1;
+            }
 
 // TODO
 #if 0
-        # Face landmark estimation
-        if detections[0].size != 0:
-            imgs, affines, box = iut.estimator_preprocess(
-                src_img[:, :, ::-1], detections, scale, pad
-            )
             estimator.set_input_shape(imgs.shape)
             landmarks, confidences = estimator.predict([imgs])
 
@@ -528,13 +538,13 @@ static int recognize_from_image(AILIANetwork* ailia_detection, AILIANetwork* ail
             imgs2, origins = iut.iris_preprocess(imgs, landmarks)
             estimator2.set_input_shape(imgs2.shape)
             eyes, iris = estimator2.predict([imgs2])
-
             eyes, iris = iut.iris_postprocess(eyes, iris, origins, affines)
             for i in range(len(eyes)):
                 draw_eye_iris(
                     src_img, eyes[i, :, :16, :2], iris[i, :, :, :2], size=1
                 )
 #endif
+        }
     }
 
     cv::imwrite(save_image_path.c_str(), mat_img);
