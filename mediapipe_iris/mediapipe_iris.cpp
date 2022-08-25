@@ -214,8 +214,6 @@ static void resize_pad(cv::Mat& mat_src, cv::Mat& mat_dst, float& scale, int pad
 
 static void denormalize_detections(cv::Mat& mat_detection, float scale, int pad[2])
 {
-    print_shape(mat_detection, "detection shape: ");
-
     assert(mat_detection.cols > 4);
 
     float* data = (float*)mat_detection.data;
@@ -232,7 +230,7 @@ static void denormalize_detections(cv::Mat& mat_detection, float scale, int pad[
 }
 
 
-static void detection2roi(cv::Mat& mat_detection, cv::Mat& mat_xc, cv::Mat& mat_yc, cv::Mat& mat_scale, cv::Mat& mat_theta)
+static void detection2roi(cv::Mat& mat_detection, float& xc, float& yc, float& scale, float& theta)
 {
 // TODO
 #if 0
@@ -256,7 +254,7 @@ static void detection2roi(cv::Mat& mat_detection, cv::Mat& mat_xc, cv::Mat& mat_
 }
 
 
-static void extract_roi(const cv::Mat& mat_input, cv::Mat& mat_xc, cv::Mat& mat_yc, cv::Mat& mat_scale, cv::Mat& mat_theta, cv::Mat& mat_images, cv::Mat& mat_affines)
+static void extract_roi(const cv::Mat& mat_input, float& xc, float& yc, float& scale, float& theta, cv::Mat& mat_images, cv::Mat& mat_affines)
 {
 // TODO
 #if 0
@@ -302,9 +300,9 @@ static int estimator_preprocess(const cv::Mat& mat_input, cv::Mat& mat_detection
 
     denormalize_detections(mat_detection, scale, pad);
 
-    cv::Mat mat_xc, mat_yc, mat_scale, mat_theta;
-    detection2roi(mat_detection, mat_xc, mat_yc, mat_scale, mat_theta);
-    extract_roi(mat_input, mat_xc, mat_yc, mat_scale, mat_theta, mat_images, mat_affines);
+    float xc, yc, theta;
+    detection2roi(mat_detection, xc, yc, scale, theta);
+    extract_roi(mat_input, xc, yc, scale, theta, mat_images, mat_affines);
 
     return status;
 }
