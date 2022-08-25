@@ -463,13 +463,13 @@ static int recognize_from_image(AILIANetwork* ailia_detection, AILIANetwork* ail
     }
     print_shape(mat_img, "input image shape: ");
 
-    cv::Mat mat_bgr;
-    cv:cvtColor(mat_img, mat_bgr, cv::COLOR_BGRA2BGR);
+    cv::Mat mat_rgb;
+    cv:cvtColor(mat_img, mat_rgb, cv::COLOR_BGRA2RGB);
 
     cv::Mat mat_128;
     float scale;
     int pad[2];
-    resize_pad(mat_bgr, mat_128, scale, pad);
+    resize_pad(mat_rgb, mat_128, scale, pad);
 
     cv::Mat mat_input2n;
     normalize_image(mat_128, mat_input2n, "127.5");
@@ -484,6 +484,16 @@ static int recognize_from_image(AILIANetwork* ailia_detection, AILIANetwork* ail
     expand_dims(mat_input3t, mat_input4, 0);
 
     print_shape(mat_input4, "input data shape: ");
+
+#if 0
+    int dsize = mat_input4.size[0] * mat_input4.size[1] * mat_input4.size[2] * mat_input4.size[3];
+    printf("%d\n", dsize);
+    float* ddata = (float*)mat_input4.data;
+    for (int i = 5000; i < 5040 && i < dsize; i++) {
+        printf("%d %.03f\n", i, ddata[i]);
+    }
+    exit(0);
+#endif
 
     // inference
     PRINT_OUT("Start inference...\n");
