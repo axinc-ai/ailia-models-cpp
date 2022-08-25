@@ -430,9 +430,9 @@ static int detect_face(AILIANetwork* ailia_detection, const cv::Mat& mat_input, 
         int output_size = output_shape.x * output_shape.y * output_shape.z * output_shape.w * sizeof(float);
 
         assert(output_shape.dim == 3);
+        assert(output_shape.z == 1);
 
-        int size[] = {(int)output_shape.z, (int)output_shape.y, (int)output_shape.x};
-        mat_output = cv::Mat(3, size, CV_32FC1);
+        mat_output = cv::Mat((int)output_shape.y, (int)output_shape.x, CV_32FC1);
 
         assert(mat_output.total() * mat_output.elemSize() == output_size);
 
@@ -485,16 +485,6 @@ static int recognize_from_image(AILIANetwork* ailia_detection, AILIANetwork* ail
 
     print_shape(mat_input4, "input data shape: ");
 
-#if 0
-    int dsize = mat_input4.size[0] * mat_input4.size[1] * mat_input4.size[2] * mat_input4.size[3];
-    printf("%d\n", dsize);
-    float* ddata = (float*)mat_input4.data;
-    for (int i = 5000; i < 5040 && i < dsize; i++) {
-        printf("%d %.03f\n", i, ddata[i]);
-    }
-    exit(0);
-#endif
-
     // inference
     PRINT_OUT("Start inference...\n");
     if (benchmark) {
@@ -522,6 +512,7 @@ static int recognize_from_image(AILIANetwork* ailia_detection, AILIANetwork* ail
         }
 
         printf("detections count: %lu\n", mat_detections.size());
+        print_shape(mat_detections[0], "detections shape: ");
 
 // TODO
 #if 0

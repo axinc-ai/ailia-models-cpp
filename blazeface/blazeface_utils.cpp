@@ -652,6 +652,10 @@ int blazeface_postprocess(const cv::Mat& raw_box, const cv::Mat& raw_score, std:
     float score_thresh = 100.0f;
     float min_score_thresh = 0.75f;
 
+    // (1, 896, N) isn't currently implemented
+    assert(raw_box.rows == 896);
+    assert(raw_score.rows == 896);
+
     cv::Mat detection_boxes;
     decode_boxes(raw_box, detection_boxes); // (896, 16)
 
