@@ -206,6 +206,9 @@ static void resize_pad(cv::Mat& mat_src, cv::Mat& mat_dst, float& scale, int pad
     mat_rsz.copyTo(mat_pad(cv::Rect(padw1, padh1, mat_rsz.cols, mat_rsz.rows)));
 
     cv::resize(mat_pad, mat_dst, cv::Size(128, 128));
+
+    pad[0] = (float)padh1 * scale;
+    pad[1] = (float)padw1 * scale;
 }
 
 
@@ -213,17 +216,19 @@ static void denormalize_detections(cv::Mat& mat_detection, float scale, int pad[
 {
     print_shape(mat_detection, "detection shape: ");
 
-// TODO
-#if 0
-    detections[:, 0] = detections[:, 0] * scale * 256 - pad[0]
-    detections[:, 1] = detections[:, 1] * scale * 256 - pad[1]
-    detections[:, 2] = detections[:, 2] * scale * 256 - pad[0]
-    detections[:, 3] = detections[:, 3] * scale * 256 - pad[1]
+    assert(mat_detection.cols > 4);
 
-    detections[:, 4::2] = detections[:, 4::2] * scale * 256 - pad[1]
-    detections[:, 5::2] = detections[:, 5::2] * scale * 256 - pad[0]
-    return detections
-#endif
+    float* data = (float*)mat_detection.data;
+
+    data[0] = data[0] * scale * 256.0f - (float)pad[0];
+    data[1] = data[1] * scale * 256.0f - (float)pad[1];
+    data[2] = data[2] * scale * 256.0f - (float)pad[0];
+    data[3] = data[3] * scale * 256.0f - (float)pad[1];
+
+    for (int i = 4; i < mat_detection.cols; i += 2) {
+        data[i] = data[i] * scale * 256.0f - (float)pad[1];
+        data[i + 1] = data[i + 1] * scale * 256.0f - (float)pad[0];
+    }
 }
 
 
