@@ -232,25 +232,30 @@ static void denormalize_detections(cv::Mat& mat_detection, float scale, int pad[
 
 static void detection2roi(cv::Mat& mat_detection, float& xc, float& yc, float& scale, float& theta)
 {
-// TODO
-#if 0
-    # compute box center and scale
-    # use mediapipe/calculators/util/detections_to_rects_calculator.cc
-    xc = (detection[:, 1] + detection[:, 3]) / 2
-    yc = (detection[:, 0] + detection[:, 2]) / 2
-    scale = (detection[:, 3] - detection[:, 1])  # assumes square boxes
+    // compute box center and scale
+    // use mediapipe/calculators/util/detections_to_rects_calculator.cc
 
-    yc += dy * scale
-    scale *= dscale
+    static float dy = 0.0f;
+    static float dscale = 1.5;
+    static int kp1 = 1; // left eye
+    static int kp2 = 0; // right eye
+    static float theta0 = 0.0f;
 
-    # compute box rotation
-    x0 = detection[:, 4+2*kp1]
-    y0 = detection[:, 4+2*kp1+1]
-    x1 = detection[:, 4+2*kp2]
-    y1 = detection[:, 4+2*kp2+1]
-    theta = np.arctan2(y0-y1, x0-x1) - theta0
-    return xc, yc, scale, theta
-#endif
+    float* data = (float*)mat_detection.data;
+
+    xc = (data[1] + data[3]) / 2.0f;
+    yc = (data[0] + data[2]) / 2.0f;
+    scale = data[3] - data[1];  // assumes square boxes
+
+    yc += dy * scale;
+    scale *= dscale;
+
+    // compute box rotation
+    float x0 = data[4 + 2 * kp1];
+    float y0 = data[4 + 2 * kp1 + 1];
+    float x1 = data[4 + 2 * kp2];
+    float y1 = data[4 + 2 * kp2 + 1];
+    theta = atan2(y0 - y1, x0 - x1) - theta0;
 }
 
 
