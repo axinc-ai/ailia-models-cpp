@@ -284,21 +284,38 @@ static void extract_roi(const cv::Mat& mat_input, float& xc, float& yc, float& s
     mat_points = mat_r * mat_points;
     mat_points = mat_points + mat_center;
 
+    // use the points to compute the affine transform that maps
+    // these points back to the output square
+
+    static float res = 192.0f; // resolution
+
+    cv::Mat mat_points1;
+    {
+        float data[] = {0.0f, 0.0f, 0.0f, res - 1.0f, res - 1.0f, 0.0f};
+        mat_points1 = cv::Mat(3, 2, CV_32FC1, data).clone();
+    }
+
+    cv::Mat mat_pts;
+    mat_pts = mat_points.colRange(0, 3).t();
+
+    cv::Mat mat_m;
+    mat_m = cv::getAffineTransform(mat_pts, mat_points1);
+
+    printf("%s\n", cv::typeToString(mat_m.type()).c_str());
+    print_shape(mat_m, "m: ");
+    for (int x = 0; x < (int)mat_m.size[0]; x++) {
+       for (int y = 0; y < (int)mat_m.size[1]; y++) {
+           printf("%d %d %.05f\n", x, y, mat_m.at<double>(x, y));
+       }
+    }
+
 // TODO
 #if 0
-    # use the points to compute the affine transform that maps
-    # these points back to the output square
-    res = resolution
-    points1 = np.array([[0, 0, res-1], [0, res-1, 0]], dtype='float32').T
-    affines = []
-    imgs = []
-    for i in range(points.shape[0]):
-        pts = points[i, :, :3].T.astype('float32')
-        M = cv2.getAffineTransform(pts, points1)
-        img = cv2.warpAffine(input, M, (res, res), borderValue=127.5)
-        imgs.append(img)
-        affine = cv2.invertAffineTransform(M).astype('float32')
-        affines.append(affine)
+    img = cv2.warpAffine(input, M, (res, res), borderValue=127.5)
+    imgs.append(img)
+    affine = cv2.invertAffineTransform(M).astype('float32')
+    affines.append(affine)
+
     if imgs:
         imgs = np.moveaxis(np.stack(imgs), 3, 1).astype('float32') / 127.5 - 1.0
         affines = np.stack(affines)
