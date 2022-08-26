@@ -261,19 +261,31 @@ static void detection2roi(cv::Mat& mat_detection, float& xc, float& yc, float& s
 
 static void extract_roi(const cv::Mat& mat_input, float& xc, float& yc, float& scale, float& theta, cv::Mat& mat_images, cv::Mat& mat_affines)
 {
+    // take points on unit square and transform them according to the roi
+
+    cv::Mat mat_points;
+    {
+        float data[] = {-1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f, -1.0f, 1.0f};
+        mat_points = cv::Mat(2, 4, CV_32FC1, data).clone().mul(scale / 2.0f);
+    }
+
+    cv::Mat mat_r;
+    {
+        float data[] = {cos(theta), -sin(theta), sin(theta), cos(theta)};
+        mat_r = cv::Mat(2, 2, CV_32FC1, data).clone();
+    }
+
+    cv::Mat mat_center;
+    {
+        float data[] = {xc, xc, xc, xc, yc, yc, yc, yc};
+        mat_center = cv::Mat(2, 4, CV_32FC1, data).clone();
+    }
+
+    mat_points = mat_r * mat_points;
+    mat_points = mat_points + mat_center;
+
 // TODO
 #if 0
-    # take points on unit square and transform them according to the roi
-    points = np.array([[-1, -1, 1, 1], [-1, 1, -1, 1]]).reshape(1, 2, 4)
-    points = points * scale.reshape(-1, 1, 1)/2
-    theta = theta.reshape(-1, 1, 1)
-    R = np.concatenate((
-        np.concatenate((np.cos(theta), -np.sin(theta)), 2),
-        np.concatenate((np.sin(theta), np.cos(theta)), 2),
-    ), 1)
-    center = np.concatenate((xc.reshape(-1, 1, 1), yc.reshape(-1, 1, 1)), 1)
-    points = R @ points + center
-
     # use the points to compute the affine transform that maps
     # these points back to the output square
     res = resolution
