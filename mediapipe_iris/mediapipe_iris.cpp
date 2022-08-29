@@ -259,7 +259,7 @@ static void detection2roi(cv::Mat& mat_detection, float& xc, float& yc, float& s
 }
 
 
-static void extract_roi(const cv::Mat& mat_input, float& xc, float& yc, float& scale, float& theta, cv::Mat& mat_images, cv::Mat& mat_affines)
+static void extract_roi(const cv::Mat& mat_input, float& xc, float& yc, float& scale, float& theta, cv::Mat& mat_image, cv::Mat& mat_affine)
 {
     // take points on unit square and transform them according to the roi
 
@@ -301,34 +301,25 @@ static void extract_roi(const cv::Mat& mat_input, float& xc, float& yc, float& s
     cv::Mat mat_m;
     mat_m = cv::getAffineTransform(mat_pts, mat_points1);
 
-    printf("%s\n", cv::typeToString(mat_m.type()).c_str());
-    print_shape(mat_m, "m: ");
-    for (int x = 0; x < (int)mat_m.size[0]; x++) {
-       for (int y = 0; y < (int)mat_m.size[1]; y++) {
-           printf("%d %d %.05f\n", x, y, mat_m.at<double>(x, y));
-       }
-    }
+    cv::Mat mat_warp1;
+    cv::warpAffine(mat_input, mat_warp1, mat_m, cv::Size(res, res), cv::INTER_LINEAR, cv::BORDER_CONSTANT, cv::Scalar(127.5f));
 
-// TODO
-#if 0
-    img = cv2.warpAffine(input, M, (res, res), borderValue=127.5)
-    imgs.append(img)
-    affine = cv2.invertAffineTransform(M).astype('float32')
-    affines.append(affine)
+    cv::Mat mat_warp2;
+    normalize_image(mat_warp1, mat_warp2, "127.5");
 
-    if imgs:
-        imgs = np.moveaxis(np.stack(imgs), 3, 1).astype('float32') / 127.5 - 1.0
-        affines = np.stack(affines)
-    else:
-        imgs = np.zeros((0, 3, res, res))
-        affines = np.zeros((0, 2, 3))
+    cv::Mat mat_warp3;
+    reshape_channels_as_dimension(mat_warp2, mat_warp3);
 
-    return imgs, affines, points
-#endif
+    transpose(mat_warp3, mat_image);
+
+    cv::Mat mat_invM;
+    cv::invertAffineTransform(mat_m, mat_invM);
+
+    mat_invM.convertTo(mat_affine, CV_32F);
 }
 
 
-static int estimator_preprocess(const cv::Mat& mat_input, cv::Mat& mat_detection, float scale, int pad[2], cv::Mat& mat_images, cv::Mat& mat_affines)
+static int estimator_preprocess(const cv::Mat& mat_input, cv::Mat& mat_detection, float scale, int pad[2], cv::Mat& mat_image, cv::Mat& mat_affine)
 {
     int status = AILIA_STATUS_SUCCESS;
 
@@ -336,7 +327,7 @@ static int estimator_preprocess(const cv::Mat& mat_input, cv::Mat& mat_detection
 
     float xc, yc, theta;
     detection2roi(mat_detection, xc, yc, scale, theta);
-    extract_roi(mat_input, xc, yc, scale, theta, mat_images, mat_affines);
+    extract_roi(mat_input, xc, yc, scale, theta, mat_image, mat_affine);
 
     return status;
 }
@@ -559,8 +550,8 @@ static int recognize_from_image(AILIANetwork* ailia_detection, AILIANetwork* ail
 
         if (mat_detections.size() > 0) {
             // face landmark estimation
-            cv::Mat mat_images, mat_affines;
-            status = estimator_preprocess(mat_rgb, mat_detections[0], scale, pad, mat_images, mat_affines);
+            cv::Mat mat_image, mat_affine;
+            status = estimator_preprocess(mat_rgb, mat_detections[0], scale, pad, mat_image, mat_affine);
             if (status != AILIA_STATUS_SUCCESS) {
                 PRINT_ERR("estimator_preprocess failed %d\n", status);
                 return -1;
