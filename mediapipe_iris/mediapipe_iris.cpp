@@ -31,12 +31,12 @@
 // Parameters
 // ======================
 
-#define DETECTION_WEIGHT_PATH "blazeface.opt.onnx"
-#define DETECTION_MODEL_PATH  "blazeface.opt.onnx.prototxt"
-#define LANDMARK_WEIGHT_PATH  "facemesh.opt.onnx"
-#define LANDMARK_MODEL_PATH   "facemesh.opt.onnx.prototxt"
-#define LANDMARK2_WEIGHT_PATH "iris.opt.onnx"
-#define LANDMARK2_MODEL_PATH  "iris.opt.onnx.prototxt"
+#define BLAZEFACE_WEIGHT_PATH "blazeface.opt.onnx"
+#define BLAZEFACE_MODEL_PATH  "blazeface.opt.onnx.prototxt"
+#define FACEMESH_WEIGHT_PATH  "facemesh.opt.onnx"
+#define FACEMESH_MODEL_PATH   "facemesh.opt.onnx.prototxt"
+#define IRIS_WEIGHT_PATH "iris.opt.onnx"
+#define IRIS_MODEL_PATH  "iris.opt.onnx.prototxt"
 
 #define IMAGE_PATH      "man.jpg"
 #define SAVE_IMAGE_PATH "output.png"
@@ -51,12 +51,12 @@
 
 #define BENCHMARK_ITERS 5
 
-static std::string detection_weight(DETECTION_WEIGHT_PATH);
-static std::string detection_model(DETECTION_MODEL_PATH);
-static std::string landmark_weight(LANDMARK_WEIGHT_PATH);
-static std::string landmark_model(LANDMARK_MODEL_PATH);
-static std::string landmark2_weight(LANDMARK2_WEIGHT_PATH);
-static std::string landmark2_model(LANDMARK2_MODEL_PATH);
+static std::string blazeface_weight(BLAZEFACE_WEIGHT_PATH);
+static std::string blazeface_model(BLAZEFACE_MODEL_PATH);
+static std::string facemesh_weight(FACEMESH_WEIGHT_PATH);
+static std::string facemesh_model(FACEMESH_MODEL_PATH);
+static std::string iris_weight(IRIS_WEIGHT_PATH);
+static std::string iris_model(IRIS_MODEL_PATH);
 
 static std::string image_path(IMAGE_PATH);
 static std::string video_path("0");
@@ -600,7 +600,7 @@ static int estimate_landmarks(AILIANetwork* ailia, const cv::Mat& mat_input, std
 // Main functions
 // ======================
 
-static int recognize_from_image(AILIANetwork* ailia_detection, AILIANetwork* ailia_landmark, AILIANetwork* ailia_landmark2)
+static int recognize_from_image(AILIANetwork* ailia_blazeface, AILIANetwork* ailia_facemesh, AILIANetwork* ailia_iris)
 {
     int status = AILIA_STATUS_SUCCESS;
 
@@ -648,7 +648,7 @@ static int recognize_from_image(AILIANetwork* ailia_detection, AILIANetwork* ail
     else {
         // face detection
         std::vector<cv::Mat> mat_predictions(2);
-        status = detect_face(ailia_detection, mat_input4, mat_predictions);
+        status = detect_face(ailia_blazeface, mat_input4, mat_predictions);
         if (status != AILIA_STATUS_SUCCESS) {
             return -1;
         }
@@ -670,7 +670,7 @@ static int recognize_from_image(AILIANetwork* ailia_detection, AILIANetwork* ail
             }
 
             std::vector<cv::Mat> mat_estimates1(2);
-            status = estimate_landmarks(ailia_landmark, mat_image, mat_estimates1);
+            status = estimate_landmarks(ailia_facemesh, mat_image, mat_estimates1);
             if (status != AILIA_STATUS_SUCCESS) {
                 return -1;
             }
@@ -700,7 +700,7 @@ static int recognize_from_image(AILIANetwork* ailia_detection, AILIANetwork* ail
 }
 
 
-static int recognize_from_video(AILIANetwork* ailia_detection, AILIANetwork* ailia_landmark, AILIANetwork* ailia_landmark2)
+static int recognize_from_video(AILIANetwork* ailia_blazeface, AILIANetwork* ailia_facemesh, AILIANetwork* ailia_iris)
 {
     return AILIA_STATUS_SUCCESS;
 }
@@ -739,10 +739,10 @@ int main(int argc, char **argv)
         PRINT_OUT("you can select environment using -e option\n");
     }
 
-    // initialize detection net
-    AILIANetwork *ailia_detection;
+    // initialize blazeface net
+    AILIANetwork *ailia_blazeface;
     {
-        status = ailiaCreate(&ailia_detection, env_id, AILIA_MULTITHREAD_AUTO);
+        status = ailiaCreate(&ailia_blazeface, env_id, AILIA_MULTITHREAD_AUTO);
         if (status != AILIA_STATUS_SUCCESS) {
             PRINT_ERR("ailiaCreate failed %d\n", status);
             if (status == AILIA_STATUS_LICENSE_NOT_FOUND || status==AILIA_STATUS_LICENSE_EXPIRED){
@@ -752,35 +752,35 @@ int main(int argc, char **argv)
         }
 
         AILIAEnvironment *env_ptr = nullptr;
-        status = ailiaGetSelectedEnvironment(ailia_detection, &env_ptr, AILIA_ENVIRONMENT_VERSION);
+        status = ailiaGetSelectedEnvironment(ailia_blazeface, &env_ptr, AILIA_ENVIRONMENT_VERSION);
         if (status != AILIA_STATUS_SUCCESS) {
             PRINT_ERR("ailiaGetSelectedEnvironment failed %d\n", status);
-            ailiaDestroy(ailia_detection);
+            ailiaDestroy(ailia_blazeface);
             return -1;
         }
 
         PRINT_OUT("selected env name : %s\n", env_ptr->name);
 
-        status = ailiaOpenStreamFile(ailia_detection, detection_model.c_str());
+        status = ailiaOpenStreamFile(ailia_blazeface, blazeface_model.c_str());
         if (status != AILIA_STATUS_SUCCESS) {
             PRINT_ERR("ailiaOpenStreamFile failed %d\n", status);
-            PRINT_ERR("ailiaGetErrorDetail %s\n", ailiaGetErrorDetail(ailia_detection));
-            ailiaDestroy(ailia_detection);
+            PRINT_ERR("ailiaGetErrorDetail %s\n", ailiaGetErrorDetail(ailia_blazeface));
+            ailiaDestroy(ailia_blazeface);
             return -1;
         }
 
-        status = ailiaOpenWeightFile(ailia_detection, detection_weight.c_str());
+        status = ailiaOpenWeightFile(ailia_blazeface, blazeface_weight.c_str());
         if (status != AILIA_STATUS_SUCCESS) {
             PRINT_ERR("ailiaOpenWeightFile failed %d\n", status);
-            ailiaDestroy(ailia_detection);
+            ailiaDestroy(ailia_blazeface);
             return -1;
         }
     }
 
-    // initialize landmark net
-    AILIANetwork *ailia_landmark;
+    // initialize facemesh net
+    AILIANetwork *ailia_facemesh;
     {
-        status = ailiaCreate(&ailia_landmark, env_id, AILIA_MULTITHREAD_AUTO);
+        status = ailiaCreate(&ailia_facemesh, env_id, AILIA_MULTITHREAD_AUTO);
         if (status != AILIA_STATUS_SUCCESS) {
             PRINT_ERR("ailiaCreate failed %d\n", status);
             if (status == AILIA_STATUS_LICENSE_NOT_FOUND || status==AILIA_STATUS_LICENSE_EXPIRED){
@@ -790,33 +790,33 @@ int main(int argc, char **argv)
         }
 
         AILIAEnvironment *env_ptr = nullptr;
-        status = ailiaGetSelectedEnvironment(ailia_landmark, &env_ptr, AILIA_ENVIRONMENT_VERSION);
+        status = ailiaGetSelectedEnvironment(ailia_facemesh, &env_ptr, AILIA_ENVIRONMENT_VERSION);
         if (status != AILIA_STATUS_SUCCESS) {
             PRINT_ERR("ailiaGetSelectedEnvironment failed %d\n", status);
-            ailiaDestroy(ailia_landmark);
+            ailiaDestroy(ailia_facemesh);
             return -1;
         }
 
-        status = ailiaOpenStreamFile(ailia_landmark, landmark_model.c_str());
+        status = ailiaOpenStreamFile(ailia_facemesh, facemesh_model.c_str());
         if (status != AILIA_STATUS_SUCCESS) {
             PRINT_ERR("ailiaOpenStreamFile failed %d\n", status);
-            PRINT_ERR("ailiaGetErrorDetail %s\n", ailiaGetErrorDetail(ailia_landmark));
-            ailiaDestroy(ailia_landmark);
+            PRINT_ERR("ailiaGetErrorDetail %s\n", ailiaGetErrorDetail(ailia_facemesh));
+            ailiaDestroy(ailia_facemesh);
             return -1;
         }
 
-        status = ailiaOpenWeightFile(ailia_landmark, landmark_weight.c_str());
+        status = ailiaOpenWeightFile(ailia_facemesh, facemesh_weight.c_str());
         if (status != AILIA_STATUS_SUCCESS) {
             PRINT_ERR("ailiaOpenWeightFile failed %d\n", status);
-            ailiaDestroy(ailia_landmark);
+            ailiaDestroy(ailia_facemesh);
             return -1;
         }
     }
 
-    // initialize landmark2 net
-    AILIANetwork *ailia_landmark2;
+    // initialize iris net
+    AILIANetwork *ailia_iris;
     {
-        status = ailiaCreate(&ailia_landmark2, env_id, AILIA_MULTITHREAD_AUTO);
+        status = ailiaCreate(&ailia_iris, env_id, AILIA_MULTITHREAD_AUTO);
         if (status != AILIA_STATUS_SUCCESS) {
             PRINT_ERR("ailiaCreate failed %d\n", status);
             if (status == AILIA_STATUS_LICENSE_NOT_FOUND || status==AILIA_STATUS_LICENSE_EXPIRED){
@@ -826,39 +826,39 @@ int main(int argc, char **argv)
         }
 
         AILIAEnvironment *env_ptr = nullptr;
-        status = ailiaGetSelectedEnvironment(ailia_landmark2, &env_ptr, AILIA_ENVIRONMENT_VERSION);
+        status = ailiaGetSelectedEnvironment(ailia_iris, &env_ptr, AILIA_ENVIRONMENT_VERSION);
         if (status != AILIA_STATUS_SUCCESS) {
             PRINT_ERR("ailiaGetSelectedEnvironment failed %d\n", status);
-            ailiaDestroy(ailia_landmark2);
+            ailiaDestroy(ailia_iris);
             return -1;
         }
 
-        status = ailiaOpenStreamFile(ailia_landmark2, landmark2_model.c_str());
+        status = ailiaOpenStreamFile(ailia_iris, iris_model.c_str());
         if (status != AILIA_STATUS_SUCCESS) {
             PRINT_ERR("ailiaOpenStreamFile failed %d\n", status);
-            PRINT_ERR("ailiaGetErrorDetail %s\n", ailiaGetErrorDetail(ailia_landmark2));
-            ailiaDestroy(ailia_landmark2);
+            PRINT_ERR("ailiaGetErrorDetail %s\n", ailiaGetErrorDetail(ailia_iris));
+            ailiaDestroy(ailia_iris);
             return -1;
         }
 
-        status = ailiaOpenWeightFile(ailia_landmark2, landmark2_weight.c_str());
+        status = ailiaOpenWeightFile(ailia_iris, iris_weight.c_str());
         if (status != AILIA_STATUS_SUCCESS) {
             PRINT_ERR("ailiaOpenWeightFile failed %d\n", status);
-            ailiaDestroy(ailia_landmark2);
+            ailiaDestroy(ailia_iris);
             return -1;
         }
     }
 
     if (video_mode) {
-        status = recognize_from_video(ailia_detection, ailia_landmark, ailia_landmark2);
+        status = recognize_from_video(ailia_blazeface, ailia_facemesh, ailia_iris);
     }
     else {
-        status = recognize_from_image(ailia_detection, ailia_landmark, ailia_landmark2);
+        status = recognize_from_image(ailia_blazeface, ailia_facemesh, ailia_iris);
     }
 
-    ailiaDestroy(ailia_detection);
-    ailiaDestroy(ailia_landmark);
-    ailiaDestroy(ailia_landmark2);
+    ailiaDestroy(ailia_blazeface);
+    ailiaDestroy(ailia_facemesh);
+    ailiaDestroy(ailia_iris);
 
     return status;
 }
