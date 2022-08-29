@@ -675,10 +675,13 @@ static int recognize_from_image(AILIANetwork* ailia_blazeface, AILIANetwork* ail
                 return -1;
             }
 
+            const cv::Mat& mat_landmarks = mat_estimates1[0];
+            const cv::Mat& mat_confidence = mat_estimates1[1];
+            print_shape(mat_landmarks, "landmarks shape: ");
+            print_shape(mat_confidence, "confidence shape: ");
+
 // TODO
 #if 0
-            # landmarks, confidences = estimator.predict([imgs])
-
             # Iris landmark estimation
             imgs2, origins = iut.iris_preprocess(imgs, landmarks)
             estimator2.set_input_shape(imgs2.shape)
