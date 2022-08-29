@@ -310,12 +310,18 @@ static void extract_roi(const cv::Mat& mat_input, float& xc, float& yc, float& s
     cv::Mat mat_warp3;
     reshape_channels_as_dimension(mat_warp2, mat_warp3);
 
-    transpose(mat_warp3, mat_image);
+    cv::Mat mat_warp4;
+    transpose(mat_warp3, mat_warp4);
 
-    cv::Mat mat_invM;
-    cv::invertAffineTransform(mat_m, mat_invM);
+    expand_dims(mat_warp4, mat_image, 0);
 
-    mat_invM.convertTo(mat_affine, CV_32F);
+    cv::Mat mat_inv1;
+    cv::invertAffineTransform(mat_m, mat_inv1);
+
+    cv::Mat mat_inv2;
+    mat_inv1.convertTo(mat_inv2, CV_32F);
+
+    expand_dims(mat_inv2, mat_affine, 0);
 }
 
 
@@ -389,12 +395,12 @@ def iris_postprocess(eyes, iris, origins, affines):
 #endif
 
 
-static int detect_face(AILIANetwork* ailia_detection, const cv::Mat& mat_input, std::vector<cv::Mat>& mat_outputs)
+static int detect_face(AILIANetwork* ailia, const cv::Mat& mat_input, std::vector<cv::Mat>& mat_outputs)
 {
     int status = AILIA_STATUS_SUCCESS;
 
     unsigned input_count;
-    status = ailiaGetInputBlobCount(ailia_detection, &input_count);
+    status = ailiaGetInputBlobCount(ailia, &input_count);
     if (status != AILIA_STATUS_SUCCESS) {
         PRINT_ERR("ailiaGetInputBlobCount failed %d\n", status);
         return status;
@@ -406,14 +412,14 @@ static int detect_face(AILIANetwork* ailia_detection, const cv::Mat& mat_input, 
     }
 
     unsigned int input_index;
-    status = ailiaGetBlobIndexByInputIndex(ailia_detection, &input_index, 0);
+    status = ailiaGetBlobIndexByInputIndex(ailia, &input_index, 0);
     if (status != AILIA_STATUS_SUCCESS) {
         PRINT_ERR("ailiaGetBlobIndexByInputIndex failed %d\n", status);
         return status;
     }
 
     AILIAShape input_shape;
-    status = ailiaGetBlobShape(ailia_detection, &input_shape, input_index, AILIA_SHAPE_VERSION);
+    status = ailiaGetBlobShape(ailia, &input_shape, input_index, AILIA_SHAPE_VERSION);
     if (status != AILIA_STATUS_SUCCESS) {
         PRINT_ERR("ailiaGetBlobShape failed %d\n", status);
         return status;
@@ -421,22 +427,27 @@ static int detect_face(AILIANetwork* ailia_detection, const cv::Mat& mat_input, 
 
     int input_size = input_shape.x * input_shape.y * input_shape.z * input_shape.w * sizeof(float);
 
+    assert(input_shape.dim == mat_input.dims);
+    assert(input_shape.w == mat_input.size[0]);
+    assert(input_shape.z == mat_input.size[1]);
+    assert(input_shape.y == mat_input.size[2]);
+    assert(input_shape.x == mat_input.size[3]);
     assert(mat_input.total() * mat_input.elemSize() == input_size);
 
-    status = ailiaSetInputBlobData(ailia_detection, mat_input.data, input_size, input_index);
+    status = ailiaSetInputBlobData(ailia, mat_input.data, input_size, input_index);
     if (status != AILIA_STATUS_SUCCESS) {
         PRINT_ERR("ailiaSetInputBlobData failed %d\n", status);
         return status;
     }
 
-    status = ailiaUpdate(ailia_detection);
+    status = ailiaUpdate(ailia);
     if (status != AILIA_STATUS_SUCCESS) {
         PRINT_ERR("ailiaUpdate failed %d\n", status);
         return status;
     }
 
     unsigned output_count;
-    status = ailiaGetOutputBlobCount(ailia_detection, &output_count);
+    status = ailiaGetOutputBlobCount(ailia, &output_count);
     if (status != AILIA_STATUS_SUCCESS) {
         PRINT_ERR("ailiaGetOutputBlobCount failed %d\n", status);
         return status;
@@ -451,14 +462,14 @@ static int detect_face(AILIANetwork* ailia_detection, const cv::Mat& mat_input, 
         cv::Mat& mat_output = mat_outputs[i];
 
         unsigned int output_index;
-        status = ailiaGetBlobIndexByOutputIndex(ailia_detection, &output_index, i);
+        status = ailiaGetBlobIndexByOutputIndex(ailia, &output_index, i);
         if (status != AILIA_STATUS_SUCCESS) {
             PRINT_ERR("ailiaGetBlobIndexByOutputIndex failed %d\n", status);
             return status;
         }
 
         AILIAShape output_shape;
-        status = ailiaGetBlobShape(ailia_detection, &output_shape, output_index, AILIA_SHAPE_VERSION);
+        status = ailiaGetBlobShape(ailia, &output_shape, output_index, AILIA_SHAPE_VERSION);
         if (status != AILIA_STATUS_SUCCESS) {
             PRINT_ERR("ailiaGetBlobShape failed %d\n", status);
             return status;
@@ -473,7 +484,108 @@ static int detect_face(AILIANetwork* ailia_detection, const cv::Mat& mat_input, 
 
         assert(mat_output.total() * mat_output.elemSize() == output_size);
 
-        status = ailiaGetBlobData(ailia_detection, mat_output.data, output_size, output_index);
+        status = ailiaGetBlobData(ailia, mat_output.data, output_size, output_index);
+        if (status != AILIA_STATUS_SUCCESS) {
+            PRINT_ERR("ailiaSetOutputBlobData failed %d\n", status);
+            return status;
+        }
+    }
+
+    return AILIA_STATUS_SUCCESS;
+}
+
+
+static int estimate_landmarks(AILIANetwork* ailia, const cv::Mat& mat_input, std::vector<cv::Mat>& mat_outputs)
+{
+    int status = AILIA_STATUS_SUCCESS;
+
+    unsigned input_count;
+    status = ailiaGetInputBlobCount(ailia, &input_count);
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("ailiaGetInputBlobCount failed %d\n", status);
+        return status;
+    }
+
+    if (input_count != 1) {
+        PRINT_ERR("ailiaGetInputBlobCount returned %u\n", input_count);
+        return AILIA_STATUS_OTHER_ERROR;
+    }
+
+    unsigned int input_index;
+    status = ailiaGetBlobIndexByInputIndex(ailia, &input_index, 0);
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("ailiaGetBlobIndexByInputIndex failed %d\n", status);
+        return status;
+    }
+
+    AILIAShape input_shape;
+    status = ailiaGetBlobShape(ailia, &input_shape, input_index, AILIA_SHAPE_VERSION);
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("ailiaGetBlobShape failed %d\n", status);
+        return status;
+    }
+
+    int input_size = input_shape.x * input_shape.y * input_shape.z * input_shape.w * sizeof(float);
+
+    assert(input_shape.dim == mat_input.dims);
+    assert(input_shape.w == mat_input.size[0]);
+    assert(input_shape.z == mat_input.size[1]);
+    assert(input_shape.y == mat_input.size[2]);
+    assert(input_shape.x == mat_input.size[3]);
+    assert(mat_input.total() * mat_input.elemSize() == input_size);
+
+    status = ailiaSetInputBlobData(ailia, mat_input.data, input_size, input_index);
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("ailiaSetInputBlobData failed %d\n", status);
+        return status;
+    }
+
+    status = ailiaUpdate(ailia);
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("ailiaUpdate failed %d\n", status);
+        return status;
+    }
+
+    unsigned output_count;
+    status = ailiaGetOutputBlobCount(ailia, &output_count);
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("ailiaGetOutputBlobCount failed %d\n", status);
+        return status;
+    }
+
+    if (output_count != mat_outputs.size()) {
+        PRINT_ERR("ailiaGetOutputBlobCount returned %u\n", output_count);
+        return AILIA_STATUS_OTHER_ERROR;
+    }
+
+    for (int i = 0; i < (int)output_count; i++) {
+        cv::Mat& mat_output = mat_outputs[i];
+
+        unsigned int output_index;
+        status = ailiaGetBlobIndexByOutputIndex(ailia, &output_index, i);
+        if (status != AILIA_STATUS_SUCCESS) {
+            PRINT_ERR("ailiaGetBlobIndexByOutputIndex failed %d\n", status);
+            return status;
+        }
+
+        AILIAShape output_shape;
+        status = ailiaGetBlobShape(ailia, &output_shape, output_index, AILIA_SHAPE_VERSION);
+        if (status != AILIA_STATUS_SUCCESS) {
+            PRINT_ERR("ailiaGetBlobShape failed %d\n", status);
+            return status;
+        }
+
+        int output_size = output_shape.x * output_shape.y * output_shape.z * output_shape.w * sizeof(float);
+
+        assert(output_shape.dim == 2);
+        assert(output_shape.w == 1);
+        assert(output_shape.z == 1);
+
+        mat_output = cv::Mat((int)output_shape.y, (int)output_shape.x, CV_32FC1);
+
+        assert(mat_output.total() * mat_output.elemSize() == output_size);
+
+        status = ailiaGetBlobData(ailia, mat_output.data, output_size, output_index);
         if (status != AILIA_STATUS_SUCCESS) {
             PRINT_ERR("ailiaSetOutputBlobData failed %d\n", status);
             return status;
@@ -557,10 +669,15 @@ static int recognize_from_image(AILIANetwork* ailia_detection, AILIANetwork* ail
                 return -1;
             }
 
+            std::vector<cv::Mat> mat_estimates1(2);
+            status = estimate_landmarks(ailia_landmark, mat_image, mat_estimates1);
+            if (status != AILIA_STATUS_SUCCESS) {
+                return -1;
+            }
+
 // TODO
 #if 0
-            estimator.set_input_shape(imgs.shape)
-            landmarks, confidences = estimator.predict([imgs])
+            # landmarks, confidences = estimator.predict([imgs])
 
             # Iris landmark estimation
             imgs2, origins = iut.iris_preprocess(imgs, landmarks)
