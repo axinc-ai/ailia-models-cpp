@@ -207,16 +207,6 @@ void concatenate(const cv::Mat& simg0, const cv::Mat& simg1, cv::Mat& dimg, int 
 }
 
 
-void reshape_channels_as_dimension(const cv::Mat& simg, cv::Mat& dimg)
-{
-    int size[] = {simg.rows, simg.cols, 1};
-    cv::Mat simg3(3, size, simg.type(), simg.data);
-    dimg = simg3.clone().reshape(1);
-    assert(dimg.channels() == 1);
-    assert(simg.total()*simg.elemSize() == dimg.total()*dimg.elemSize());
-}
-
-
 void expand_dims(const cv::Mat& simg, cv::Mat& dimg, int axis)
 {
     std::vector<int> shape;
@@ -250,4 +240,55 @@ void print_shape(const cv::Mat& img, const char* prefix, const char* suffix)
     if (suffix != nullptr && suffix[0] != 0) {
         PRINT_OUT("%s", suffix);
     }
+}
+
+
+void reshape_channels_as_dimensions(const cv::Mat& simg, cv::Mat& dimg)
+{
+    // Reshape (X, Y) with N channels as (1, N, X, Y)
+
+    assert(simg.dims == 2);
+    assert(simg.channels() > 1);
+
+    int size[] = {simg.rows, simg.cols, 1};
+    cv::Mat simg3(simg.channels(), size, simg.type(), simg.data);
+
+    cv::Mat timg1;
+    timg1 = simg3.clone().reshape(1);
+
+    cv::Mat timg2;
+    transpose(timg1, timg2);
+
+    expand_dims(timg2, dimg, 0);
+
+    assert(dimg.dims == 4);
+    assert(dimg.channels() == 1);
+    assert(dimg.total()*dimg.elemSize() == simg.total()*simg.elemSize());
+}
+
+
+void reshape_dimensions_as_channels(const cv::Mat& simg, cv::Mat& dimg)
+{
+    // Reshape (1, N, X, Y) as (X, Y) with N channels
+
+    assert(simg.dims == 4);
+    assert(simg.size[0] == 1);
+    assert(simg.size[1] > 1);
+    assert(simg.channels() == 1);
+
+    cv::Mat timg1;
+    int shape1[] = {simg.size[1], simg.size[2], simg.size[3]};
+    timg1 = simg.reshape(1, 3, shape1);
+
+    cv::Mat timg2;
+    transpose(timg1, timg2, {1, 2, 0});
+
+    int shape[] = {timg2.size[0], timg2.size[1]};
+    dimg = timg2.reshape(timg2.size[2], 2, shape);
+
+    assert(dimg.dims == 2);
+    assert(dimg.rows > 0);
+    assert(dimg.cols > 0);
+    assert(dimg.channels() > 1);
+    assert(dimg.total()*dimg.elemSize() == simg.total()*simg.elemSize());
 }

@@ -307,13 +307,7 @@ static void extract_roi(const cv::Mat& mat_input, float& xc, float& yc, float& s
     cv::Mat mat_warp2;
     normalize_image(mat_warp1, mat_warp2, "127.5");
 
-    cv::Mat mat_warp3;
-    reshape_channels_as_dimension(mat_warp2, mat_warp3);
-
-    cv::Mat mat_warp4;
-    transpose(mat_warp3, mat_warp4);
-
-    expand_dims(mat_warp4, mat_image, 0);
+    reshape_channels_as_dimensions(mat_warp2, mat_image);
 
     cv::Mat mat_inv1;
     cv::invertAffineTransform(mat_m, mat_inv1);
@@ -325,17 +319,13 @@ static void extract_roi(const cv::Mat& mat_input, float& xc, float& yc, float& s
 }
 
 
-static int estimator_preprocess(const cv::Mat& mat_input, cv::Mat& mat_detection, float scale, int pad[2], cv::Mat& mat_image, cv::Mat& mat_affine)
+static void estimator_preprocess(const cv::Mat& mat_input, cv::Mat& mat_detection, float scale, int pad[2], cv::Mat& mat_image, cv::Mat& mat_affine)
 {
-    int status = AILIA_STATUS_SUCCESS;
-
     denormalize_detections(mat_detection, scale, pad);
 
     float xc, yc, theta;
     detection2roi(mat_detection, xc, yc, scale, theta);
     extract_roi(mat_input, xc, yc, scale, theta, mat_image, mat_affine);
-
-    return status;
 }
 
 
@@ -349,29 +339,69 @@ def denormalize_landmarks(landmarks, affines):
         landmark = (affine[:, :2] @ landmark[:, :2].T + affine[:, 2:]).T
         landmarks[i, :, :2] = landmark
     return landmarks
+#endif
 
 
-def iris_preprocess(imgs, raw_landmarks):
-    landmarks = raw_landmarks.reshape((-1, 3))
+static void filter_landmarks(const cv::Mat& mat_input, cv::Mat& mat_output, int* points, int count)
+{
+    mat_output.create(count, 1, CV_32FC2);
 
-    imgs_cropped = []
-    origins = []
-    for i in range(len(imgs)):
-        eye_left_center = landmarks[EYE_LEFT_CONTOUR, :2].mean(axis=0)
-        eye_right_center = landmarks[EYE_RIGHT_CONTOUR, :2].mean(axis=0)
-
-        x_left, y_left = map(int, np.round(eye_left_center - 32))
-        # Horizontal flip
-        imgs_cropped.append(imgs[i, :, y_left:y_left+64, x_left+63:x_left-1:-1])
-        origins.append((x_left+63, y_left))
-
-        x_right, y_right = map(int, np.round(eye_right_center - 32))
-        imgs_cropped.append(imgs[i, :, y_right:y_right+64, x_right:x_right+64])
-        origins.append((x_right, y_right))
-
-    return np.stack(imgs_cropped), np.stack(origins)
+    for (int i = 0; i < count; i++)
+    {
+        mat_output.at<float>(i, 0) = mat_input.at<float>(0, points[i], 0);
+        mat_output.at<float>(i, 1) = mat_input.at<float>(0, points[i], 1);
+    }
+}
 
 
+static void iris_preprocess(const cv::Mat& mat_input, const cv::Mat& mat_landmarks, cv::Mat& mat_images, std::vector<cv::Point2i>& vec_origins)
+{
+    static int eye_left_contour[] = {249, 263, 362, 373, 374, 380, 381, 382, 384, 385, 386, 387, 388, 390, 398, 466};
+    static int eye_right_contour[] = {7, 33, 133, 144, 145, 153, 154, 155, 157, 158, 159, 160, 161, 163, 173, 246};
+
+    cv::Mat mat_input2;
+    reshape_dimensions_as_channels(mat_input, mat_input2);
+
+    {
+        cv::Mat mat_filter;
+        filter_landmarks(mat_landmarks, mat_filter, eye_left_contour, sizeof(eye_left_contour) / sizeof(eye_left_contour[0]));
+
+        cv::Scalar eye_center = cv::mean(mat_filter);
+        int x = (int)round(eye_center[0] - 32.0);
+        int y = (int)round(eye_center[1] - 32.0);
+        vec_origins.push_back(cv::Point2i(x + 63, y));
+
+        cv::Mat mat_image1;
+        cv::flip(mat_input2(cv::Rect(x, y, 64, 64)), mat_image1, 0);
+
+        cv::Mat mat_image2;
+        reshape_channels_as_dimensions(mat_image1, mat_image2);
+
+        mat_images.push_back(mat_image2);
+    }
+
+    {
+        cv::Mat mat_filter;
+        filter_landmarks(mat_landmarks, mat_filter, eye_right_contour, sizeof(eye_right_contour) / sizeof(eye_right_contour[0]));
+
+        cv::Scalar eye_center = cv::mean(mat_filter);
+        int x = (int)round(eye_center[0] - 32.0);
+        int y = (int)round(eye_center[1] - 32.0);
+        vec_origins.push_back(cv::Point2i(x, y));
+
+        cv::Mat mat_image1;
+        mat_image1 = mat_input2(cv::Rect(x, y, 64, 64));
+
+        cv::Mat mat_image2;
+        reshape_channels_as_dimensions(mat_image1, mat_image2);
+
+        mat_images.push_back(mat_image2);
+    }
+}
+
+
+// TODO
+#if 0
 def iris_postprocess(eyes, iris, origins, affines):
     eyes = eyes.copy().reshape((-1, 71, 3))
     iris = iris.copy().reshape((-1, 5, 3))
@@ -395,7 +425,7 @@ def iris_postprocess(eyes, iris, origins, affines):
 #endif
 
 
-static int detect_face(AILIANetwork* ailia, const cv::Mat& mat_input, std::vector<cv::Mat>& mat_outputs)
+static int detect_face(AILIANetwork* ailia, const cv::Mat& mat_input, std::vector<cv::Mat>& vec_outputs)
 {
     int status = AILIA_STATUS_SUCCESS;
 
@@ -453,13 +483,13 @@ static int detect_face(AILIANetwork* ailia, const cv::Mat& mat_input, std::vecto
         return status;
     }
 
-    if (output_count != mat_outputs.size()) {
+    if (output_count != vec_outputs.size()) {
         PRINT_ERR("ailiaGetOutputBlobCount returned %u\n", output_count);
         return AILIA_STATUS_OTHER_ERROR;
     }
 
     for (int i = 0; i < (int)output_count; i++) {
-        cv::Mat& mat_output = mat_outputs[i];
+        cv::Mat& mat_output = vec_outputs[i];
 
         unsigned int output_index;
         status = ailiaGetBlobIndexByOutputIndex(ailia, &output_index, i);
@@ -495,7 +525,7 @@ static int detect_face(AILIANetwork* ailia, const cv::Mat& mat_input, std::vecto
 }
 
 
-static int estimate_landmarks(AILIANetwork* ailia, const cv::Mat& mat_input, std::vector<cv::Mat>& mat_outputs)
+static int estimate_landmarks(AILIANetwork* ailia, const cv::Mat& mat_input, std::vector<cv::Mat>& vec_outputs)
 {
     int status = AILIA_STATUS_SUCCESS;
 
@@ -553,13 +583,13 @@ static int estimate_landmarks(AILIANetwork* ailia, const cv::Mat& mat_input, std
         return status;
     }
 
-    if (output_count != mat_outputs.size()) {
+    if (output_count != vec_outputs.size()) {
         PRINT_ERR("ailiaGetOutputBlobCount returned %u\n", output_count);
         return AILIA_STATUS_OTHER_ERROR;
     }
 
     for (int i = 0; i < (int)output_count; i++) {
-        cv::Mat& mat_output = mat_outputs[i];
+        cv::Mat& mat_output = vec_outputs[i];
 
         unsigned int output_index;
         status = ailiaGetBlobIndexByOutputIndex(ailia, &output_index, i);
@@ -592,6 +622,11 @@ static int estimate_landmarks(AILIANetwork* ailia, const cv::Mat& mat_input, std
         }
     }
 
+    {
+        int shape[] = {vec_outputs[0].size[0], vec_outputs[0].size[1] / 3, 3};
+        vec_outputs[0] = vec_outputs[0].reshape(1, 3, shape);
+    }
+
     return AILIA_STATUS_SUCCESS;
 }
 
@@ -615,24 +650,19 @@ static int recognize_from_image(AILIANetwork* ailia_blazeface, AILIANetwork* ail
     cv::Mat mat_rgb;
     cv:cvtColor(mat_img, mat_rgb, cv::COLOR_BGRA2RGB);
 
-    cv::Mat mat_128;
+    cv::Mat mat_input;
     float scale;
     int pad[2];
-    resize_pad(mat_rgb, mat_128, scale, pad);
+    {
+        cv::Mat mat_input2;
+        resize_pad(mat_rgb, mat_input2, scale, pad);
 
-    cv::Mat mat_input2n;
-    normalize_image(mat_128, mat_input2n, "127.5");
+        cv::Mat mat_input3;
+        normalize_image(mat_input2, mat_input3, "127.5");
 
-    cv::Mat mat_input3;
-    reshape_channels_as_dimension(mat_input2n, mat_input3);
-
-    cv::Mat mat_input3t;
-    transpose(mat_input3, mat_input3t);
-
-    cv::Mat mat_input4;
-    expand_dims(mat_input3t, mat_input4, 0);
-
-    print_shape(mat_input4, "input data shape: ");
+        cv::Mat mat_input4;
+        reshape_channels_as_dimensions(mat_input3, mat_input);
+    }
 
     // inference
     PRINT_OUT("Start inference...\n");
@@ -647,43 +677,40 @@ static int recognize_from_image(AILIANetwork* ailia_blazeface, AILIANetwork* ail
     }
     else {
         // face detection
-        std::vector<cv::Mat> mat_predictions(2);
-        status = detect_face(ailia_blazeface, mat_input4, mat_predictions);
+        std::vector<cv::Mat> vec_predictions(2);
+        status = detect_face(ailia_blazeface, mat_input, vec_predictions);
         if (status != AILIA_STATUS_SUCCESS) {
             return -1;
         }
 
-        std::vector<cv::Mat> mat_detections;
-        status = blazeface_postprocess(mat_predictions[0], mat_predictions[1], mat_detections);
+        std::vector<cv::Mat> vec_detections;
+        status = blazeface_postprocess(vec_predictions[0], vec_predictions[1], vec_detections);
         if (status != AILIA_STATUS_SUCCESS) {
             PRINT_ERR("blazeface_postprocess failed %d\n", status);
             return -1;
         }
 
-        if (mat_detections.size() > 0) {
+        if (vec_detections.size() > 0) {
             // face landmark estimation
             cv::Mat mat_image, mat_affine;
-            status = estimator_preprocess(mat_rgb, mat_detections[0], scale, pad, mat_image, mat_affine);
-            if (status != AILIA_STATUS_SUCCESS) {
-                PRINT_ERR("estimator_preprocess failed %d\n", status);
-                return -1;
-            }
+            estimator_preprocess(mat_rgb, vec_detections[0], scale, pad, mat_image, mat_affine);
 
-            std::vector<cv::Mat> mat_estimates1(2);
-            status = estimate_landmarks(ailia_facemesh, mat_image, mat_estimates1);
+            std::vector<cv::Mat> vec_estimates1(2);
+            status = estimate_landmarks(ailia_facemesh, mat_image, vec_estimates1);
             if (status != AILIA_STATUS_SUCCESS) {
                 return -1;
             }
 
-            const cv::Mat& mat_landmarks = mat_estimates1[0];
-            const cv::Mat& mat_confidence = mat_estimates1[1];
-            print_shape(mat_landmarks, "landmarks shape: ");
-            print_shape(mat_confidence, "confidence shape: ");
+            const cv::Mat& mat_landmarks = vec_estimates1[0];
+            const cv::Mat& mat_confidence = vec_estimates1[1];
+
+            // iris landmark estimation
+            cv::Mat mat_images;
+            std::vector<cv::Point2i> vec_origins;
+            iris_preprocess(mat_image, mat_landmarks, mat_images, vec_origins);
 
 // TODO
 #if 0
-            # Iris landmark estimation
-            imgs2, origins = iut.iris_preprocess(imgs, landmarks)
             estimator2.set_input_shape(imgs2.shape)
             eyes, iris = estimator2.predict([imgs2])
             eyes, iris = iut.iris_postprocess(eyes, iris, origins, affines)
