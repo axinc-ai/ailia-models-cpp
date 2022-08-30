@@ -371,7 +371,7 @@ static void iris_preprocess(const cv::Mat& mat_input, const cv::Mat& mat_landmar
         vec_origins.push_back(cv::Point2i(x + 63, y));
 
         cv::Mat mat_image1;
-        cv::flip(mat_input2(cv::Rect(x, y, 64, 64)), mat_image1, 0);
+        cv::flip(mat_input2(cv::Rect(x, y, 64, 64)), mat_image1, 1);
 
         cv::Mat mat_image2;
         reshape_channels_as_dimensions(mat_image1, mat_image2);
@@ -389,7 +389,7 @@ static void iris_preprocess(const cv::Mat& mat_input, const cv::Mat& mat_landmar
         vec_origins.push_back(cv::Point2i(x, y));
 
         cv::Mat mat_image1;
-        mat_image1 = mat_input2(cv::Rect(x, y, 64, 64));
+        mat_image1 = mat_input2(cv::Rect(x, y, 64, 64)).clone();
 
         cv::Mat mat_image2;
         reshape_channels_as_dimensions(mat_image1, mat_image2);
@@ -399,12 +399,24 @@ static void iris_preprocess(const cv::Mat& mat_input, const cv::Mat& mat_landmar
 }
 
 
+static void iris_postprocess(cv::Mat& mat_eyes, cv::Mat& mat_iris, cv::Mat& mat_affine, std::vector<cv::Point2i>& vec_origins)
+{
+    cv::Mat mat_eyes2;
+    {
+        int shape[] = {(int)mat_eyes.total() / 71 / 3, 71, 3};
+        mat_eyes2 = mat_eyes.clone().reshape(1, 3, shape);
+        print_shape(mat_eyes2, "eyes2");
+    }
+
+    cv::Mat mat_iris2;
+    {
+        int shape[] = {(int)mat_iris.total() / 5 / 3, 5, 3};
+        mat_iris2 = mat_iris.clone().reshape(1, 3, shape);
+        print_shape(mat_iris2, "iris2");
+    }
+
 // TODO
 #if 0
-def iris_postprocess(eyes, iris, origins, affines):
-    eyes = eyes.copy().reshape((-1, 71, 3))
-    iris = iris.copy().reshape((-1, 5, 3))
-
     # Horizontally flipped left eye processing
     eyes[::2, :, 0] = -eyes[::2, :, 0]
     iris[::2, :, 0] = -iris[::2, :, 0]
@@ -422,6 +434,7 @@ def iris_postprocess(eyes, iris, origins, affines):
 
     return eyes, iris
 #endif
+}
 
 
 static int detect_face(AILIANetwork* ailia, const cv::Mat& mat_input, std::vector<cv::Mat>& vec_outputs)
@@ -804,8 +817,8 @@ static int recognize_from_image(AILIANetwork* ailia_blazeface, AILIANetwork* ail
                 return -1;
             }
 
-            const cv::Mat& mat_landmarks = vec_estimates1[0];
-            const cv::Mat& mat_confidence = vec_estimates1[1];
+            cv::Mat& mat_landmarks = vec_estimates1[0];
+            cv::Mat& mat_confidence = vec_estimates1[1];
 
             // iris landmark estimation
             cv::Mat mat_images;
@@ -818,19 +831,15 @@ static int recognize_from_image(AILIANetwork* ailia_blazeface, AILIANetwork* ail
                 return -1;
             }
 
-            const cv::Mat& mat_eyes = vec_estimates2[0];
-            const cv::Mat& mat_iris = vec_estimates2[1];
+            cv::Mat& mat_eyes = vec_estimates2[0];
+            cv::Mat& mat_iris = vec_estimates2[1];
 
-            print_shape(mat_eyes, "eyes shape: ");
-            print_shape(mat_iris, "iris shape: ");
+            iris_postprocess(mat_eyes, mat_iris, mat_affine, vec_origins);
 
 // TODO
 #if 0
-            eyes, iris = iut.iris_postprocess(eyes, iris, origins, affines)
             for i in range(len(eyes)):
-                draw_eye_iris(
-                    src_img, eyes[i, :, :16, :2], iris[i, :, :, :2], size=1
-                )
+                draw_eye_iris(src_img, eyes[i, :, :16, :2], iris[i, :, :, :2], size=1)
 #endif
         }
     }
