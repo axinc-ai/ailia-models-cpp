@@ -453,8 +453,7 @@ static void iris_postprocess(cv::Mat& mat_eyes, cv::Mat& mat_iris, cv::Mat& mat_
         for (int x = 0; x < mat_landmarks2.size[0]; x++) {
             for (int y = 0; y < mat_landmarks2.size[1]; y++) {
                 for (int z = 0; z < mat_landmarks2.size[2]; z++) {
-                    // TODO
-                    // mat_landmarks2.at<float>(x, y, z) /= resolution;
+                    mat_landmarks2.at<float>(x, y, z) /= resolution;
                 }
             }
         }
@@ -482,12 +481,15 @@ static void iris_postprocess(cv::Mat& mat_eyes, cv::Mat& mat_iris, cv::Mat& mat_
         mat_landmarks5 = mat_landmarks4.reshape(3, 3, shape);
     }
 
-// TODO
-#if 0
-    eyes = iris_landmarks[:, :, :71]
-    iris = iris_landmarks[:, :, 71:]
-    return eyes, iris
-#endif
+    {
+        cv::Range ranges[] = {cv::Range::all(), cv::Range::all(), cv::Range(0, 71)};
+        mat_eyes = mat_landmarks5(ranges).clone();
+    }
+
+    {
+        cv::Range ranges[] = {cv::Range::all(), cv::Range::all(), cv::Range(71, mat_landmarks5.size[2])};
+        mat_iris = mat_landmarks5(ranges).clone();
+    }
 }
 
 
@@ -889,6 +891,9 @@ static int recognize_from_image(AILIANetwork* ailia_blazeface, AILIANetwork* ail
             cv::Mat& mat_iris = vec_estimates2[1];
 
             iris_postprocess(mat_eyes, mat_iris, mat_affine, vec_origins);
+
+            print_shape(mat_eyes, "eyes ");
+            print_shape(mat_iris, "iris ");
 
 // TODO
 #if 0
