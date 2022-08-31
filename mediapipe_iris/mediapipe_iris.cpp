@@ -353,7 +353,7 @@ static void filter_landmarks(const cv::Mat& mat_input, cv::Mat& mat_output, int*
 }
 
 
-static void iris_preprocess(const cv::Mat& mat_input, const cv::Mat& mat_landmarks, cv::Mat& mat_images, std::vector<cv::Point2i>& vec_origins)
+static void iris_preprocess(const cv::Mat& mat_input, const cv::Mat& mat_landmarks, cv::Mat& mat_images, std::vector<cv::Point2f>& vec_origins)
 {
     static int eye_left_contour[] = {249, 263, 362, 373, 374, 380, 381, 382, 384, 385, 386, 387, 388, 390, 398, 466};
     static int eye_right_contour[] = {7, 33, 133, 144, 145, 153, 154, 155, 157, 158, 159, 160, 161, 163, 173, 246};
@@ -368,7 +368,7 @@ static void iris_preprocess(const cv::Mat& mat_input, const cv::Mat& mat_landmar
         cv::Scalar eye_center = cv::mean(mat_filter);
         int x = (int)round(eye_center[0] - 32.0);
         int y = (int)round(eye_center[1] - 32.0);
-        vec_origins.push_back(cv::Point2i(x + 63, y));
+        vec_origins.push_back(cv::Point2f(x + 63, y));
 
         cv::Mat mat_image1;
         cv::flip(mat_input2(cv::Rect(x, y, 64, 64)), mat_image1, 1);
@@ -386,7 +386,7 @@ static void iris_preprocess(const cv::Mat& mat_input, const cv::Mat& mat_landmar
         cv::Scalar eye_center = cv::mean(mat_filter);
         int x = (int)round(eye_center[0] - 32.0);
         int y = (int)round(eye_center[1] - 32.0);
-        vec_origins.push_back(cv::Point2i(x, y));
+        vec_origins.push_back(cv::Point2f(x, y));
 
         cv::Mat mat_image1;
         mat_image1 = mat_input2(cv::Rect(x, y, 64, 64)).clone();
@@ -399,31 +399,45 @@ static void iris_preprocess(const cv::Mat& mat_input, const cv::Mat& mat_landmar
 }
 
 
-static void iris_postprocess(cv::Mat& mat_eyes, cv::Mat& mat_iris, cv::Mat& mat_affine, std::vector<cv::Point2i>& vec_origins)
+static void iris_postprocess(cv::Mat& mat_eyes, cv::Mat& mat_iris, cv::Mat& mat_affine, std::vector<cv::Point2f>& vec_origins)
 {
     cv::Mat mat_eyes2;
     {
         int shape[] = {(int)mat_eyes.total() / 71 / 3, 71, 3};
         mat_eyes2 = mat_eyes.clone().reshape(1, 3, shape);
-        print_shape(mat_eyes2, "eyes2");
+
+        for (int x = 0; x < mat_eyes2.size[0]; x++) {
+            for (int y = 0; y < mat_eyes2.size[1]; y++) {
+                if (x < 1) {
+                    // horizontally flipped left eye processing
+                    mat_eyes2.at<float>(x, y, 0) *= -1.0f;
+                }
+
+                mat_eyes2.at<float>(x, y, 0) += vec_origins[x % 2].x;
+                mat_eyes2.at<float>(x, y, 1) += vec_origins[x % 2].y;
+            }
+        }
     }
 
     cv::Mat mat_iris2;
     {
         int shape[] = {(int)mat_iris.total() / 5 / 3, 5, 3};
         mat_iris2 = mat_iris.clone().reshape(1, 3, shape);
-        print_shape(mat_iris2, "iris2");
+
+        for (int x = 0; x < mat_iris2.size[0]; x++) {
+            for (int y = 0; y < mat_iris2.size[1]; y++) {
+                if (x < 1) {
+                    mat_iris2.at<float>(x, y, 0) *= -1.0f;
+                }
+
+                mat_iris2.at<float>(x, y, 0) += vec_origins[x % 2].x;
+                mat_iris2.at<float>(x, y, 1) += vec_origins[x % 2].y;
+            }
+        }
     }
 
 // TODO
 #if 0
-    # Horizontally flipped left eye processing
-    eyes[::2, :, 0] = -eyes[::2, :, 0]
-    iris[::2, :, 0] = -iris[::2, :, 0]
-
-    eyes[:, :, :2] += origins[:, None]
-    iris[:, :, :2] += origins[:, None]
-
     iris_landmarks = np.concatenate((eyes, iris), axis=1)
     iris_landmarks = iris_landmarks.reshape((eyes.shape[0] // 2, -1, 3))
     iris_landmarks = denormalize_landmarks(iris_landmarks / resolution, affines)
@@ -822,7 +836,7 @@ static int recognize_from_image(AILIANetwork* ailia_blazeface, AILIANetwork* ail
 
             // iris landmark estimation
             cv::Mat mat_images;
-            std::vector<cv::Point2i> vec_origins;
+            std::vector<cv::Point2f> vec_origins;
             iris_preprocess(mat_image, mat_landmarks, mat_images, vec_origins);
 
             std::vector<cv::Mat> vec_estimates2(2);
