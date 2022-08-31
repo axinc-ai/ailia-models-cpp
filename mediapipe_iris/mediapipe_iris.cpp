@@ -260,7 +260,7 @@ static void detection2roi(cv::Mat& mat_detection, float& xc, float& yc, float& s
 }
 
 
-static void extract_roi(const cv::Mat& mat_input, float& xc, float& yc, float& scale, float& theta, cv::Mat& mat_image, cv::Mat& mat_affine)
+static void extract_roi(const cv::Mat& mat_input, float& xc, float& yc, float& scale, float& theta, cv::Mat& mat_image, cv::Mat& mat_affines)
 {
     // take points on unit square and transform them according to the roi
 
@@ -316,34 +316,70 @@ static void extract_roi(const cv::Mat& mat_input, float& xc, float& yc, float& s
     cv::Mat mat_inv2;
     mat_inv1.convertTo(mat_inv2, CV_32F);
 
-    expand_dims(mat_inv2, mat_affine, 0);
+    expand_dims(mat_inv2, mat_affines, 0);
 }
 
 
-static void estimator_preprocess(const cv::Mat& mat_input, cv::Mat& mat_detection, float scale, int pad[2], cv::Mat& mat_image, cv::Mat& mat_affine)
+static void estimator_preprocess(const cv::Mat& mat_input, cv::Mat& mat_detection, float scale, int pad[2], cv::Mat& mat_image, cv::Mat& mat_affines)
 {
     denormalize_detections(mat_detection, scale, pad);
 
     float xc, yc, theta;
     detection2roi(mat_detection, xc, yc, scale, theta);
-    extract_roi(mat_input, xc, yc, scale, theta, mat_image, mat_affine);
+    extract_roi(mat_input, xc, yc, scale, theta, mat_image, mat_affines);
 }
 
 
-static void denormalize_landmarks(const cv::Mat& mat_input, cv::Mat& mat_output, cv::Mat& mat_affine)
+static void denormalize_landmarks(const cv::Mat& mat_input, cv::Mat& mat_output, cv::Mat& mat_affines)
 {
-// TODO
-#if 0
-    landmarks = landmarks.reshape((landmarks.shape[0], -1, 3))
-    landmarks[:, :, :2] *= resolution
-    for i in range(len(landmarks)):
-        landmark, affine = landmarks[i], affines[i]
-        landmark = (affine[:, :2] @ landmark[:, :2].T + affine[:, 2:]).T
-        landmarks[i, :, :2] = landmark
-    return landmarks
-#else
+    assert(mat_input.dims == 3);
+    assert(mat_input.size[2] == 3);
+
+    cv::Mat mat_landmarks = mat_input.clone();
+
+    for (int x = 0; x < mat_landmarks.size[0]; x++) {
+        for (int y = 0; y < mat_landmarks.size[1]; y++) {
+            mat_landmarks.at<float>(x, y, 0) *= resolution;
+            mat_landmarks.at<float>(x, y, 1) *= resolution;
+        }
+    }
+
     mat_output = mat_input.clone();
-#endif
+
+    for (int x = 0; x < mat_landmarks.size[0]; x++) {
+        cv::Mat mat_landmark;
+        {
+            cv::Range ranges[] = {cv::Range(x, x + 1), cv::Range::all(), cv::Range(0, 2)};
+            int shape[] = {mat_landmarks.size[1], 2};
+            mat_landmark = mat_landmarks(ranges).clone().reshape(1, 2, shape).t();
+        }
+
+        cv::Mat mat_affine1;
+        {
+            cv::Range ranges[] = {cv::Range(x, x + 1), cv::Range::all(), cv::Range(0, 2)};
+            int shape[] = {mat_affines.size[1], 2};
+            mat_affine1 = mat_affines(ranges).clone().reshape(1, 2, shape);
+        }
+
+        cv::Mat mat_affine2;
+        {
+            cv::Range ranges[] = {cv::Range(x, x + 1), cv::Range::all(), cv::Range(2, 3)};
+            int shape[] = {mat_affines.size[1], 1};
+            mat_affine2 = mat_affines(ranges).clone().reshape(1, 2, shape);
+        }
+
+        assert(mat_landmark.size[0] == mat_affine1.size[0]);
+        assert(mat_landmark.size[0] == mat_affine2.size[0]);
+        assert(mat_landmark.size[1] == mat_output.size[1]);
+
+        mat_landmark = mat_affine1 * mat_landmark;
+
+        for (int y = 0; y < mat_landmark.size[0]; y++) {
+            for (int z = 0; z < mat_landmark.size[1]; z++) {
+                mat_output.at<float>(x, z, y) = mat_landmark.at<float>(y, z) + mat_affine2.at<float>(y, 0);
+            }
+        }
+    }
 }
 
 
@@ -404,7 +440,7 @@ static void iris_preprocess(const cv::Mat& mat_input, const cv::Mat& mat_landmar
 }
 
 
-static void iris_postprocess(cv::Mat& mat_eyes, cv::Mat& mat_iris, cv::Mat& mat_affine, std::vector<cv::Point2f>& vec_origins)
+static void iris_postprocess(cv::Mat& mat_eyes, cv::Mat& mat_iris, cv::Mat& mat_affines, std::vector<cv::Point2f>& vec_origins)
 {
     cv::Mat mat_eyes2;
     {
@@ -460,7 +496,7 @@ static void iris_postprocess(cv::Mat& mat_eyes, cv::Mat& mat_iris, cv::Mat& mat_
     }
 
     cv::Mat mat_landmarks3;
-    denormalize_landmarks(mat_landmarks2, mat_landmarks3, mat_affine);
+    denormalize_landmarks(mat_landmarks2, mat_landmarks3, mat_affines);
 
     cv::Mat mat_landmarks4;
     {
@@ -864,8 +900,8 @@ static int recognize_from_image(AILIANetwork* ailia_blazeface, AILIANetwork* ail
 
         if (vec_detections.size() > 0) {
             // face landmark estimation
-            cv::Mat mat_image, mat_affine;
-            estimator_preprocess(mat_rgb, vec_detections[0], scale, pad, mat_image, mat_affine);
+            cv::Mat mat_image, mat_affines;
+            estimator_preprocess(mat_rgb, vec_detections[0], scale, pad, mat_image, mat_affines);
 
             std::vector<cv::Mat> vec_estimates1(2);
             status = estimate_landmarks(ailia_facemesh, mat_image, vec_estimates1);
@@ -890,7 +926,7 @@ static int recognize_from_image(AILIANetwork* ailia_blazeface, AILIANetwork* ail
             cv::Mat& mat_eyes = vec_estimates2[0];
             cv::Mat& mat_iris = vec_estimates2[1];
 
-            iris_postprocess(mat_eyes, mat_iris, mat_affine, vec_origins);
+            iris_postprocess(mat_eyes, mat_iris, mat_affines, vec_origins);
 
             print_shape(mat_eyes, "eyes ");
             print_shape(mat_iris, "iris ");
