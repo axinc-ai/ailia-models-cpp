@@ -175,6 +175,39 @@ static int argument_parser(int argc, char **argv)
 }
 
 
+// TODO
+#if 0
+def draw_roi(img, roi):
+    for i in range(roi.shape[0]):
+        (x1, x2, x3, x4), (y1, y2, y3, y4) = roi[i]
+        cv2.line(img, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 0), 2)
+        cv2.line(img, (int(x1), int(y1)), (int(x3), int(y3)), (0, 255, 0), 2)
+        cv2.line(img, (int(x2), int(y2)), (int(x4), int(y4)), (0, 0, 0), 2)
+        cv2.line(img, (int(x3), int(y3)), (int(x4), int(y4)), (0, 0, 0), 2)
+
+
+def draw_landmarks(img, points, color=(0, 0, 255), size=2):
+    for point in points:
+        x, y = point
+        x, y = int(x), int(y)
+        cv2.circle(img, (x, y), size, color, thickness=cv2.FILLED)
+
+
+def draw_eye_iris(img, eyes, iris, eye_color=(0, 0, 255), iris_color=(255, 0, 0), iris_pt_color=(0, 255, 0), size=1):
+    EYE_CONTOUR_ORDERED = [0, 1, 2, 3, 4, 5, 6, 7, 8, 15, 14, 13, 12, 11, 10, 9]
+
+    for i in range(2):
+        pts = eyes[i, EYE_CONTOUR_ORDERED, :2].round().astype(np.int32)
+        pts = pts.reshape((-1, 1, 2))
+        cv2.polylines(img, [pts], True, eye_color, thickness=size)
+
+        center = tuple(iris[i, 0])
+        radius = int(np.linalg.norm(iris[i, 1] - iris[i, 0]).round())
+        cv2.circle(img, center, radius, iris_color, thickness=size)
+        draw_landmarks(img, iris[i], color=iris_pt_color, size=size)
+#endif
+
+
 static void resize_pad(cv::Mat& mat_src, cv::Mat& mat_dst, float& scale, int pad[2])
 {
     int h1, w1, padh, padw;
@@ -513,17 +546,17 @@ static void iris_postprocess(cv::Mat& mat_eyes, cv::Mat& mat_iris, cv::Mat& mat_
 
     cv::Mat mat_landmarks5;
     {
-        int shape[] = {(int)mat_landmarks4.total() / 2 / 76 / 3, 2, 76};
-        mat_landmarks5 = mat_landmarks4.reshape(3, 3, shape);
+        int shape[] = {(int)mat_landmarks4.total() / 2 / 76 / 3, 2, 76, 3};
+        mat_landmarks5 = mat_landmarks4.reshape(1, 4, shape);
     }
 
     {
-        cv::Range ranges[] = {cv::Range::all(), cv::Range::all(), cv::Range(0, 71)};
+        cv::Range ranges[] = {cv::Range::all(), cv::Range::all(), cv::Range(0, 71), cv::Range::all()};
         mat_eyes = mat_landmarks5(ranges).clone();
     }
 
     {
-        cv::Range ranges[] = {cv::Range::all(), cv::Range::all(), cv::Range(71, mat_landmarks5.size[2])};
+        cv::Range ranges[] = {cv::Range::all(), cv::Range::all(), cv::Range(71, mat_landmarks5.size[2]), cv::Range::all()};
         mat_iris = mat_landmarks5(ranges).clone();
     }
 }
@@ -923,19 +956,29 @@ static int recognize_from_image(AILIANetwork* ailia_blazeface, AILIANetwork* ail
                 return -1;
             }
 
-            cv::Mat& mat_eyes = vec_estimates2[0];
-            cv::Mat& mat_iris = vec_estimates2[1];
+            cv::Mat& mat_eyes1 = vec_estimates2[0];
+            cv::Mat& mat_iris1 = vec_estimates2[1];
 
-            iris_postprocess(mat_eyes, mat_iris, mat_affines, vec_origins);
+            iris_postprocess(mat_eyes1, mat_iris1, mat_affines, vec_origins);
 
-            print_shape(mat_eyes, "eyes ");
-            print_shape(mat_iris, "iris ");
+            for (int x = 0; x < mat_eyes1.size[0]; x++) {
+                cv::Mat mat_eyes2;
+                {
+                    cv::Range ranges[] = {cv::Range(x, x + 1), cv::Range::all(), cv::Range(0, 16), cv::Range(0, 2)};
+                    int shape[] = {mat_eyes1.size[1], 16};
+                    mat_eyes2 = mat_eyes1(ranges).clone().reshape(2, 2, shape);
+                }
 
-// TODO
-#if 0
-            for i in range(len(eyes)):
-                draw_eye_iris(src_img, eyes[i, :, :16, :2], iris[i, :, :, :2], size=1)
-#endif
+                cv::Mat mat_iris2;
+                {
+                    cv::Range ranges[] = {cv::Range(x, x + 1), cv::Range::all(), cv::Range::all(), cv::Range(0, 2)};
+                    int shape[] = {mat_iris1.size[1], mat_iris1.size[2]};
+                    mat_iris2 = mat_iris1(ranges).clone().reshape(2, 2, shape);
+                }
+
+                // TODO
+                // draw_eye_iris(mat_img, mat_eyes2, mat_iris2);
+            }
         }
     }
 
@@ -949,6 +992,7 @@ static int recognize_from_image(AILIANetwork* ailia_blazeface, AILIANetwork* ail
 
 static int recognize_from_video(AILIANetwork* ailia_blazeface, AILIANetwork* ailia_facemesh, AILIANetwork* ailia_iris)
 {
+    // TODO
     return AILIA_STATUS_SUCCESS;
 }
 
