@@ -65,6 +65,7 @@ static std::string save_image_path(SAVE_IMAGE_PATH);
 static bool benchmark  = false;
 static bool video_mode = false;
 static int args_env_id = -1;
+static float resolution = 192.0f;
 
 
 // ======================
@@ -287,7 +288,7 @@ static void extract_roi(const cv::Mat& mat_input, float& xc, float& yc, float& s
     // use the points to compute the affine transform that maps
     // these points back to the output square
 
-    static float res = 192.0f; // resolution
+    static float res = resolution;
 
     cv::Mat mat_points1;
     {
@@ -329,9 +330,10 @@ static void estimator_preprocess(const cv::Mat& mat_input, cv::Mat& mat_detectio
 }
 
 
+static void denormalize_landmarks(const cv::Mat& mat_input, cv::Mat& mat_output, cv::Mat& mat_affine)
+{
 // TODO
 #if 0
-def denormalize_landmarks(landmarks, affines):
     landmarks = landmarks.reshape((landmarks.shape[0], -1, 3))
     landmarks[:, :, :2] *= resolution
     for i in range(len(landmarks)):
@@ -339,7 +341,10 @@ def denormalize_landmarks(landmarks, affines):
         landmark = (affine[:, :2] @ landmark[:, :2].T + affine[:, 2:]).T
         landmarks[i, :, :2] = landmark
     return landmarks
+#else
+    mat_output = mat_input.clone();
 #endif
+}
 
 
 static void filter_landmarks(const cv::Mat& mat_input, cv::Mat& mat_output, int* points, int count)
@@ -436,16 +441,51 @@ static void iris_postprocess(cv::Mat& mat_eyes, cv::Mat& mat_iris, cv::Mat& mat_
         }
     }
 
+    cv::Mat mat_landmarks1;
+    concatenate(mat_eyes2, mat_iris2, mat_landmarks1, 1);
+
+    cv::Mat mat_landmarks2;
+    {
+        int shape[] = {mat_landmarks1.size[0] / 2, 0, 3};
+        shape[1] = (int)mat_landmarks1.total() / shape[0] / shape[2];
+        mat_landmarks2 = mat_landmarks1.reshape(1, 3, shape);
+
+        for (int x = 0; x < mat_landmarks2.size[0]; x++) {
+            for (int y = 0; y < mat_landmarks2.size[1]; y++) {
+                for (int z = 0; z < mat_landmarks2.size[2]; z++) {
+                    // TODO
+                    // mat_landmarks2.at<float>(x, y, z) /= resolution;
+                }
+            }
+        }
+    }
+
+    cv::Mat mat_landmarks3;
+    denormalize_landmarks(mat_landmarks2, mat_landmarks3, mat_affine);
+
+    cv::Mat mat_landmarks4;
+    {
+        mat_landmarks4.create(mat_landmarks3.dims, mat_landmarks3.size, CV_32SC1);
+
+        for (int x = 0; x < mat_landmarks3.size[0]; x++) {
+            for (int y = 0; y < mat_landmarks3.size[1]; y++) {
+                for (int z = 0; z < mat_landmarks3.size[2]; z++) {
+                    mat_landmarks4.at<int>(x, y, z) = (int)round(mat_landmarks3.at<float>(x, y, z));
+                }
+            }
+        }
+    }
+
+    cv::Mat mat_landmarks5;
+    {
+        int shape[] = {(int)mat_landmarks4.total() / 2 / 76 / 3, 2, 76};
+        mat_landmarks5 = mat_landmarks4.reshape(3, 3, shape);
+    }
+
 // TODO
 #if 0
-    iris_landmarks = np.concatenate((eyes, iris), axis=1)
-    iris_landmarks = iris_landmarks.reshape((eyes.shape[0] // 2, -1, 3))
-    iris_landmarks = denormalize_landmarks(iris_landmarks / resolution, affines)
-
-    iris_landmarks = iris_landmarks.reshape((-1, 2, 76, 3)).round().astype(int)
     eyes = iris_landmarks[:, :, :71]
     iris = iris_landmarks[:, :, 71:]
-
     return eyes, iris
 #endif
 }
