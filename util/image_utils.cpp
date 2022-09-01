@@ -121,13 +121,9 @@ int load_image(cv::Mat& img, const char* path, cv::Size shape,
     if (gen_input_ailia) {
         if (rgb) {
             transpose(mimg2, img, {2, 0, 1});
-            std::vector<int> newshape = {1, mimg2.size[0], mimg2.size[1], mimg2.size[2]};
-            img.reshape(1, newshape.size(), &newshape[0]);
         }
         else {
             mimg2.copyTo(img);
-            std::vector<int> newshape = {1, 1, mimg2.size[0], mimg2.size[1]};
-            img.reshape(1, newshape.size(), &newshape[0]);
         }
     }
     else {

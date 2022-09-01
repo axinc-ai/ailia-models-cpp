@@ -3,6 +3,8 @@
 set (PROJECT_NAME resnet50)
 set (SRC_FILES ${PROJECT_NAME}.cpp)
 set (SRC_FILES ${SRC_FILES} ../util/utils.cpp)
+set (SRC_FILES ${SRC_FILES} ../util/mat_utils.cpp)
+set (SRC_FILES ${SRC_FILES} ../util/image_utils.cpp)
 set (SRC_FILES ${SRC_FILES} ../util/webcamera_utils.cpp)
 set (INCLUDE_PATH $ENV{AILIA_LIBRARY_PATH}/include ../util)
 if(WIN32)

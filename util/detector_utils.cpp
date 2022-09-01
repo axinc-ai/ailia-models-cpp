@@ -49,7 +49,7 @@ cv::Scalar hsv_to_rgb(int h, int s, int v)
 }
 
 
-int prot_result(AILIADetector* detector, cv::Mat& img, const std::vector<const char*> category, bool logging)
+int plot_result(AILIADetector* detector, cv::Mat& img, const std::vector<const char*> category, bool logging)
 {
     unsigned int obj_count;
     int status = ailiaDetectorGetObjectCount(detector, &obj_count);
