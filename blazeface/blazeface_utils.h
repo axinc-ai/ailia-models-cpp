@@ -8,7 +8,7 @@
 extern "C" {
 #endif
 
-int postprocess(const cv::Mat& raw_box, const cv::Mat& raw_score, std::vector<cv::Mat>& detections);
+int blazeface_postprocess(const cv::Mat& raw_box, const cv::Mat& raw_score, std::vector<cv::Mat>& detections);
 
 #ifndef __cplusplus
 }

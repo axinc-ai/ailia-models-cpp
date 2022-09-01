@@ -18,7 +18,7 @@ https://ailia.jp/en/
 
 ### Install ailia SDK
 
-Copy the files located in the folder [ailia SDK]/l?ibrary/ t?o the folder ./ailia/library/.
+Copy the files located in the folder [ailia SDK]/library/ to the folder ./ailia/library/.
 
 ### Install dependent libraries
 
@@ -35,7 +35,7 @@ Xcode Commandline Tools are required, they can be installed by running the comma
 xcode-select --install
 ```
 
-OpenCV is also required, it can be installed by running the command.
+OpenCV is required, it can be installed by running the command.
 
 ```
 brew install opencv.
@@ -43,7 +43,7 @@ brew install opencv.
 
 #### Linux
 
-OpenCV is also required, it can be installed by running the command.
+OpenCV is required, it can be installed by running the command.
 ```
 apt install libopencv-dev
 ```
@@ -51,10 +51,16 @@ apt install libopencv-dev
 ### Build
 
 ```
-cd yolov3-face
+cd yolox
 export AILIA_LIBRARY_PATH=../ailia/library
 cmake .
 make
+```
+
+### Run
+
+```
+./yolox.sh -v 0
 ```
 
 # Supporting Models
@@ -79,6 +85,7 @@ We are now converting to C++. Please wait to complete conversion.
 |:-----------|------------:|:------------:|:------------:|
 | [yolov3-tiny](/yolov3-tiny/) | [YOLO: Real-Time Object Detection](https://pjreddie.com/darknet/yolo/) | ONNX Runtime | 1.2.1 and later |
 | [m2det](/m2det/) | [M2Det: A Single-Shot Object Detector based on Multi-Level Feature Pyramid Network](https://github.com/qijiezhao/M2Det) | Pytorch | 1.2.3 and later |
+| [yolox](/yolox/) | [YOLOX](https://github.com/Megvii-BaseDetection/YOLOX) | Pytorch | 1.2.6 and later |
 
 ## Pose estimation
 
@@ -103,4 +110,4 @@ We are now converting to C++. Please wait to complete conversion.
 | Name | Detail | Exported From | Supported Ailia Version |
 |:-----------|------------:|:------------:|:------------:|
 |[face_alignment](/face_alignment/)| [2D and 3D Face alignment library build using pytorch](https://github.com/1adrianb/face-alignment) | Pytorch | 1.2.1 and later |
-
+|[mediapipe_iris](/mediapipe_iris/) | [irislandmarks.pytorch](https://github.com/cedriclmenard/irislandmarks.pytorch) | Pytorch | 1.2.2 and later |
