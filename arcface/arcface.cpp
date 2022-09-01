@@ -735,9 +735,9 @@ static int compare_video(AILIANetwork *net)
             }
 
             detections.clear();
-            status = postprocess(preds_ailia0, preds_ailia1, detections);
+            status = blazeface_postprocess(preds_ailia0, preds_ailia1, detections);
             if (status != AILIA_STATUS_SUCCESS) {
-                PRINT_ERR("postprocess failed %d\n", status);
+                PRINT_ERR("blazeface_postprocess failed %d\n", status);
                 ailiaDestroy(detector_net);
                 return -1;
             }
