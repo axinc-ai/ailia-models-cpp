@@ -886,6 +886,78 @@ static int estimate_iris(AILIANetwork* ailia, const cv::Mat& mat_input, std::vec
 // Main functions
 // ======================
 
+static int recognize(AILIANetwork* ailia_blazeface, AILIANetwork* ailia_facemesh, AILIANetwork* ailia_iris,
+                     cv::Mat& mat_img, const cv::Mat& mat_rgb, const cv::Mat &mat_input, float scale, int pad[2])
+{
+    int status = AILIA_STATUS_SUCCESS;
+
+    // face detection
+    std::vector<cv::Mat> vec_predictions(2);
+    status = detect_face(ailia_blazeface, mat_input, vec_predictions);
+    if (status != AILIA_STATUS_SUCCESS) {
+        return status;
+    }
+
+    std::vector<cv::Mat> vec_detections;
+    status = blazeface_postprocess(vec_predictions[0], vec_predictions[1], vec_detections);
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("blazeface_postprocess failed %d\n", status);
+        return status;
+    }
+
+    if (vec_detections.size() > 0) {
+        // face landmark estimation
+        cv::Mat mat_image, mat_affines;
+        estimator_preprocess(mat_rgb, vec_detections[0], scale, pad, mat_image, mat_affines);
+
+        std::vector<cv::Mat> vec_estimates1(2);
+        status = estimate_landmarks(ailia_facemesh, mat_image, vec_estimates1);
+        if (status != AILIA_STATUS_SUCCESS) {
+            return status;
+        }
+
+        cv::Mat& mat_landmarks = vec_estimates1[0];
+        cv::Mat& mat_confidence = vec_estimates1[1];
+
+        // iris landmark estimation
+        cv::Mat mat_images;
+        std::vector<cv::Point2f> vec_origins;
+        iris_preprocess(mat_image, mat_landmarks, mat_images, vec_origins);
+
+        std::vector<cv::Mat> vec_estimates2(2);
+        status = estimate_iris(ailia_iris, mat_images, vec_estimates2);
+        if (status != AILIA_STATUS_SUCCESS) {
+            return status;
+        }
+
+        cv::Mat& mat_eyes1 = vec_estimates2[0];
+        cv::Mat& mat_iris1 = vec_estimates2[1];
+
+        iris_postprocess(mat_eyes1, mat_iris1, mat_affines, vec_origins);
+
+        for (int x = 0; x < mat_eyes1.size[0]; x++) {
+            cv::Mat mat_eyes2;
+            {
+                cv::Range ranges[] = {cv::Range(x, x + 1), cv::Range::all(), cv::Range(0, 16), cv::Range(0, 2)};
+                int shape[] = {mat_eyes1.size[1], 16};
+                mat_eyes2 = mat_eyes1(ranges).clone().reshape(2, 2, shape);
+            }
+
+            cv::Mat mat_iris2;
+            {
+                cv::Range ranges[] = {cv::Range(x, x + 1), cv::Range::all(), cv::Range::all(), cv::Range(0, 2)};
+                int shape[] = {mat_iris1.size[1], mat_iris1.size[2]};
+                mat_iris2 = mat_iris1(ranges).clone().reshape(2, 2, shape);
+            }
+
+            draw_eye_iris(mat_img, mat_eyes2, mat_iris2);
+        }
+    }
+
+    return AILIA_STATUS_SUCCESS;
+}
+
+
 static int recognize_from_image(AILIANetwork* ailia_blazeface, AILIANetwork* ailia_facemesh, AILIANetwork* ailia_iris)
 {
     int status = AILIA_STATUS_SUCCESS;
@@ -921,134 +993,18 @@ static int recognize_from_image(AILIANetwork* ailia_blazeface, AILIANetwork* ail
         PRINT_OUT("BENCHMARK mode\n");
         for (int i = 0; i < BENCHMARK_ITERS; i++) {
             clock_t start = clock();
-            // face detection
-            std::vector<cv::Mat> vec_predictions(2);
-            status = detect_face(ailia_blazeface, mat_input, vec_predictions);
+            status = recognize(ailia_blazeface, ailia_facemesh, ailia_iris, mat_img, mat_rgb, mat_input, scale, pad);
             if (status != AILIA_STATUS_SUCCESS) {
                 return -1;
-            }
-
-            std::vector<cv::Mat> vec_detections;
-            status = blazeface_postprocess(vec_predictions[0], vec_predictions[1], vec_detections);
-            if (status != AILIA_STATUS_SUCCESS) {
-                PRINT_ERR("blazeface_postprocess failed %d\n", status);
-                return -1;
-            }
-
-            if (vec_detections.size() > 0) {
-                // face landmark estimation
-                cv::Mat mat_image, mat_affines;
-                estimator_preprocess(mat_rgb, vec_detections[0], scale, pad, mat_image, mat_affines);
-
-                std::vector<cv::Mat> vec_estimates1(2);
-                status = estimate_landmarks(ailia_facemesh, mat_image, vec_estimates1);
-                if (status != AILIA_STATUS_SUCCESS) {
-                    return -1;
-                }
-
-                cv::Mat& mat_landmarks = vec_estimates1[0];
-                cv::Mat& mat_confidence = vec_estimates1[1];
-
-                // iris landmark estimation
-                cv::Mat mat_images;
-                std::vector<cv::Point2f> vec_origins;
-                iris_preprocess(mat_image, mat_landmarks, mat_images, vec_origins);
-
-                std::vector<cv::Mat> vec_estimates2(2);
-                status = estimate_iris(ailia_iris, mat_images, vec_estimates2);
-                if (status != AILIA_STATUS_SUCCESS) {
-                    return -1;
-                }
-
-                cv::Mat& mat_eyes1 = vec_estimates2[0];
-                cv::Mat& mat_iris1 = vec_estimates2[1];
-
-                iris_postprocess(mat_eyes1, mat_iris1, mat_affines, vec_origins);
-
-                for (int x = 0; x < mat_eyes1.size[0]; x++) {
-                    cv::Mat mat_eyes2;
-                    {
-                        cv::Range ranges[] = {cv::Range(x, x + 1), cv::Range::all(), cv::Range(0, 16), cv::Range(0, 2)};
-                        int shape[] = {mat_eyes1.size[1], 16};
-                        mat_eyes2 = mat_eyes1(ranges).clone().reshape(2, 2, shape);
-                    }
-
-                    cv::Mat mat_iris2;
-                    {
-                        cv::Range ranges[] = {cv::Range(x, x + 1), cv::Range::all(), cv::Range::all(), cv::Range(0, 2)};
-                        int shape[] = {mat_iris1.size[1], mat_iris1.size[2]};
-                        mat_iris2 = mat_iris1(ranges).clone().reshape(2, 2, shape);
-                    }
-
-                    draw_eye_iris(mat_img, mat_eyes2, mat_iris2);
-                }
             }
             clock_t end = clock();
             PRINT_OUT("\tailia processing time %ld ms\n", ((end - start) * 1000) / CLOCKS_PER_SEC);
         }
     }
     else {
-        // face detection
-        std::vector<cv::Mat> vec_predictions(2);
-        status = detect_face(ailia_blazeface, mat_input, vec_predictions);
+        status = recognize(ailia_blazeface, ailia_facemesh, ailia_iris, mat_img, mat_rgb, mat_input, scale, pad);
         if (status != AILIA_STATUS_SUCCESS) {
             return -1;
-        }
-
-        std::vector<cv::Mat> vec_detections;
-        status = blazeface_postprocess(vec_predictions[0], vec_predictions[1], vec_detections);
-        if (status != AILIA_STATUS_SUCCESS) {
-            PRINT_ERR("blazeface_postprocess failed %d\n", status);
-            return -1;
-        }
-
-        if (vec_detections.size() > 0) {
-            // face landmark estimation
-            cv::Mat mat_image, mat_affines;
-            estimator_preprocess(mat_rgb, vec_detections[0], scale, pad, mat_image, mat_affines);
-
-            std::vector<cv::Mat> vec_estimates1(2);
-            status = estimate_landmarks(ailia_facemesh, mat_image, vec_estimates1);
-            if (status != AILIA_STATUS_SUCCESS) {
-                return -1;
-            }
-
-            cv::Mat& mat_landmarks = vec_estimates1[0];
-            cv::Mat& mat_confidence = vec_estimates1[1];
-
-            // iris landmark estimation
-            cv::Mat mat_images;
-            std::vector<cv::Point2f> vec_origins;
-            iris_preprocess(mat_image, mat_landmarks, mat_images, vec_origins);
-
-            std::vector<cv::Mat> vec_estimates2(2);
-            status = estimate_iris(ailia_iris, mat_images, vec_estimates2);
-            if (status != AILIA_STATUS_SUCCESS) {
-                return -1;
-            }
-
-            cv::Mat& mat_eyes1 = vec_estimates2[0];
-            cv::Mat& mat_iris1 = vec_estimates2[1];
-
-            iris_postprocess(mat_eyes1, mat_iris1, mat_affines, vec_origins);
-
-            for (int x = 0; x < mat_eyes1.size[0]; x++) {
-                cv::Mat mat_eyes2;
-                {
-                    cv::Range ranges[] = {cv::Range(x, x + 1), cv::Range::all(), cv::Range(0, 16), cv::Range(0, 2)};
-                    int shape[] = {mat_eyes1.size[1], 16};
-                    mat_eyes2 = mat_eyes1(ranges).clone().reshape(2, 2, shape);
-                }
-
-                cv::Mat mat_iris2;
-                {
-                    cv::Range ranges[] = {cv::Range(x, x + 1), cv::Range::all(), cv::Range::all(), cv::Range(0, 2)};
-                    int shape[] = {mat_iris1.size[1], mat_iris1.size[2]};
-                    mat_iris2 = mat_iris1(ranges).clone().reshape(2, 2, shape);
-                }
-
-                draw_eye_iris(mat_img, mat_eyes2, mat_iris2);
-            }
         }
     }
 
@@ -1063,7 +1019,42 @@ static int recognize_from_image(AILIANetwork* ailia_blazeface, AILIANetwork* ail
 
 static int recognize_from_video(AILIANetwork* ailia_blazeface, AILIANetwork* ailia_facemesh, AILIANetwork* ailia_iris)
 {
-    // TODO
+    cv::VideoCapture capture;
+    if (video_path == "0") {
+        PRINT_OUT("[INFO] webcamera mode is activated\n");
+        capture = cv::VideoCapture(0);
+        if (!capture.isOpened()) {
+            PRINT_ERR("[ERROR] webcamera not found\n");
+            return -1;
+        }
+    }
+    else {
+        if (check_file_existance(video_path.c_str())) {
+            capture = cv::VideoCapture(video_path.c_str());
+        }
+        else {
+            PRINT_ERR("[ERROR] \"%s\" not found\n", video_path.c_str());
+            return -1;
+        }
+    }
+
+    while (1) {
+        int status;
+
+        cv::Mat frame;
+        capture >> frame;
+        if ((char)cv::waitKey(1) == 'q' || frame.empty()) {
+            break;
+        }
+
+        // TODO
+    }
+
+    capture.release();
+    cv::destroyAllWindows();
+
+    PRINT_OUT("Program finished successfully.\n");
+
     return AILIA_STATUS_SUCCESS;
 }
 
