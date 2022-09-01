@@ -886,14 +886,31 @@ static int estimate_iris(AILIANetwork* ailia, const cv::Mat& mat_input, std::vec
 // Main functions
 // ======================
 
-static int recognize(AILIANetwork* ailia_blazeface, AILIANetwork* ailia_facemesh, AILIANetwork* ailia_iris,
-                     cv::Mat& mat_img, const cv::Mat& mat_rgb, const cv::Mat &mat_input, float scale, int pad[2])
+static int recognize(AILIANetwork* ailia_blazeface, AILIANetwork* ailia_facemesh, AILIANetwork* ailia_iris, cv::Mat& mat_img)
 {
     int status = AILIA_STATUS_SUCCESS;
 
+    // prepare image
+    cv::Mat mat_rgb;
+    cv:cvtColor(mat_img, mat_rgb, cv::COLOR_BGRA2RGB);
+
+    cv::Mat mat_data;
+    float scale;
+    int pad[2];
+    {
+        cv::Mat mat_data2;
+        resize_pad(mat_rgb, mat_data2, scale, pad);
+
+        cv::Mat mat_data3;
+        normalize_image(mat_data2, mat_data3, "127.5");
+
+        cv::Mat mat_data4;
+        reshape_channels_as_dimensions(mat_data3, mat_data);
+    }
+
     // face detection
     std::vector<cv::Mat> vec_predictions(2);
-    status = detect_face(ailia_blazeface, mat_input, vec_predictions);
+    status = detect_face(ailia_blazeface, mat_data, vec_predictions);
     if (status != AILIA_STATUS_SUCCESS) {
         return status;
     }
@@ -962,7 +979,7 @@ static int recognize_from_image(AILIANetwork* ailia_blazeface, AILIANetwork* ail
 {
     int status = AILIA_STATUS_SUCCESS;
 
-    // prepare input data
+    // load image
     cv::Mat mat_img;
     status = load_image(mat_img, image_path.c_str());
     if (status != AILIA_STATUS_SUCCESS) {
@@ -970,30 +987,13 @@ static int recognize_from_image(AILIANetwork* ailia_blazeface, AILIANetwork* ail
     }
     print_shape(mat_img, "input image shape: ");
 
-    cv::Mat mat_rgb;
-    cv:cvtColor(mat_img, mat_rgb, cv::COLOR_BGRA2RGB);
-
-    cv::Mat mat_input;
-    float scale;
-    int pad[2];
-    {
-        cv::Mat mat_input2;
-        resize_pad(mat_rgb, mat_input2, scale, pad);
-
-        cv::Mat mat_input3;
-        normalize_image(mat_input2, mat_input3, "127.5");
-
-        cv::Mat mat_input4;
-        reshape_channels_as_dimensions(mat_input3, mat_input);
-    }
-
     // inference
     PRINT_OUT("Start inference...\n");
     if (benchmark) {
         PRINT_OUT("BENCHMARK mode\n");
         for (int i = 0; i < BENCHMARK_ITERS; i++) {
             clock_t start = clock();
-            status = recognize(ailia_blazeface, ailia_facemesh, ailia_iris, mat_img, mat_rgb, mat_input, scale, pad);
+            status = recognize(ailia_blazeface, ailia_facemesh, ailia_iris, mat_img);
             if (status != AILIA_STATUS_SUCCESS) {
                 return -1;
             }
@@ -1002,7 +1002,7 @@ static int recognize_from_image(AILIANetwork* ailia_blazeface, AILIANetwork* ail
         }
     }
     else {
-        status = recognize(ailia_blazeface, ailia_facemesh, ailia_iris, mat_img, mat_rgb, mat_input, scale, pad);
+        status = recognize(ailia_blazeface, ailia_facemesh, ailia_iris, mat_img);
         if (status != AILIA_STATUS_SUCCESS) {
             return -1;
         }
@@ -1039,15 +1039,18 @@ static int recognize_from_video(AILIANetwork* ailia_blazeface, AILIANetwork* ail
     }
 
     while (1) {
-        int status;
-
-        cv::Mat frame;
-        capture >> frame;
-        if ((char)cv::waitKey(1) == 'q' || frame.empty()) {
+        cv::Mat mat_frame;
+        capture >> mat_frame;
+        if ((char)cv::waitKey(1) == 'q' || mat_frame.empty()) {
             break;
         }
 
-        // TODO
+        int status = recognize(ailia_blazeface, ailia_facemesh, ailia_iris, mat_frame);
+        if (status != AILIA_STATUS_SUCCESS) {
+            return -1;
+        }
+
+        cv::imshow("frame", mat_frame);
     }
 
     capture.release();
