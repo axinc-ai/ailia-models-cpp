@@ -175,15 +175,11 @@ static int argument_parser(int argc, char **argv)
 }
 
 
-static void draw_landmarks(cv::Mat& mat_img, const std::vector<cv::Point2i>& points, const cv::Scalar& color, int thickness)
+static void draw_landmarks(cv::Mat& mat_img, const std::vector<cv::Point2i>& points, const cv::Scalar& color, int size)
 {
-// TODO
-#if 0
-    for point in points:
-        x, y = point
-        x, y = int(x), int(y)
-        cv2.circle(img, (x, y), size, color, thickness=cv2.FILLED)
-#endif
+    for (const cv::Point2i& point : points) {
+        cv::circle(mat_img, point, size, color, cv::FILLED);
+    }
 }
 
 
@@ -193,7 +189,7 @@ static void draw_eye_iris(cv::Mat& mat_img, const cv::Mat& mat_eyes, const cv::M
     static cv::Scalar color_eye(0, 0, 255, 255);
     static cv::Scalar color_iris(255, 0, 0, 255);
     static cv::Scalar color_point(0, 255, 0, 255);
-    static int thickness = 1;
+    static int size = 1;
 
     assert(mat_eyes.size[1] == 16);
 
@@ -205,19 +201,19 @@ static void draw_eye_iris(cv::Mat& mat_img, const cv::Mat& mat_eyes, const cv::M
             points_eye[y] = mat_eyes.at<cv::Point2i>(x, eye_contour_ordered[y]);
         }
 
-        cv::polylines(mat_img, points_eye, true, color_eye, thickness);
+        cv::polylines(mat_img, points_eye, true, color_eye, size);
 
         for (int y = 0; y < mat_iris.size[1]; y++) {
             points_iris[y] = mat_iris.at<cv::Point2i>(x, y);
         }
 
-        cv::Point2i &center = points_iris[0];
+        cv::Point2i& center = points_iris[0];
         cv::Point2f normal = points_iris[1] - points_iris[0];
         int radius = (int)round(sqrt(normal.x * normal.x + normal.y * normal.y));
 
-        cv::circle(mat_img, center, radius, color_iris, thickness);
+        cv::circle(mat_img, center, radius, color_iris, size);
 
-        draw_landmarks(mat_img, points_iris, color_point, thickness);
+        draw_landmarks(mat_img, points_iris, color_point, size);
     }
 }
 
