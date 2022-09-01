@@ -175,37 +175,51 @@ static int argument_parser(int argc, char **argv)
 }
 
 
+static void draw_landmarks(cv::Mat& mat_img, const std::vector<cv::Point2i>& points, const cv::Scalar& color, int thickness)
+{
 // TODO
 #if 0
-def draw_roi(img, roi):
-    for i in range(roi.shape[0]):
-        (x1, x2, x3, x4), (y1, y2, y3, y4) = roi[i]
-        cv2.line(img, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 0), 2)
-        cv2.line(img, (int(x1), int(y1)), (int(x3), int(y3)), (0, 255, 0), 2)
-        cv2.line(img, (int(x2), int(y2)), (int(x4), int(y4)), (0, 0, 0), 2)
-        cv2.line(img, (int(x3), int(y3)), (int(x4), int(y4)), (0, 0, 0), 2)
-
-
-def draw_landmarks(img, points, color=(0, 0, 255), size=2):
     for point in points:
         x, y = point
         x, y = int(x), int(y)
         cv2.circle(img, (x, y), size, color, thickness=cv2.FILLED)
-
-
-def draw_eye_iris(img, eyes, iris, eye_color=(0, 0, 255), iris_color=(255, 0, 0), iris_pt_color=(0, 255, 0), size=1):
-    EYE_CONTOUR_ORDERED = [0, 1, 2, 3, 4, 5, 6, 7, 8, 15, 14, 13, 12, 11, 10, 9]
-
-    for i in range(2):
-        pts = eyes[i, EYE_CONTOUR_ORDERED, :2].round().astype(np.int32)
-        pts = pts.reshape((-1, 1, 2))
-        cv2.polylines(img, [pts], True, eye_color, thickness=size)
-
-        center = tuple(iris[i, 0])
-        radius = int(np.linalg.norm(iris[i, 1] - iris[i, 0]).round())
-        cv2.circle(img, center, radius, iris_color, thickness=size)
-        draw_landmarks(img, iris[i], color=iris_pt_color, size=size)
 #endif
+}
+
+
+static void draw_eye_iris(cv::Mat& mat_img, const cv::Mat& mat_eyes, const cv::Mat& mat_iris)
+{
+    static int eye_contour_ordered[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 15, 14, 13, 12, 11, 10, 9};
+    static cv::Scalar color_eye(0, 0, 255, 255);
+    static cv::Scalar color_iris(255, 0, 0, 255);
+    static cv::Scalar color_point(0, 255, 0, 255);
+    static int thickness = 1;
+
+    assert(mat_eyes.size[1] == 16);
+
+    std::vector<cv::Point2i> points_eye(mat_eyes.size[1]);
+    std::vector<cv::Point2i> points_iris(mat_iris.size[1]);
+
+    for (int x = 0; x < mat_eyes.size[0]; x++) {
+        for (int y = 0; y < mat_eyes.size[1]; y++) {
+            points_eye[y] = mat_eyes.at<cv::Point2i>(x, eye_contour_ordered[y]);
+        }
+
+        cv::polylines(mat_img, points_eye, true, color_eye, thickness);
+
+        for (int y = 0; y < mat_iris.size[1]; y++) {
+            points_iris[y] = mat_iris.at<cv::Point2i>(x, y);
+        }
+
+        cv::Point2i &center = points_iris[0];
+        cv::Point2f normal = points_iris[1] - points_iris[0];
+        int radius = (int)round(sqrt(normal.x * normal.x + normal.y * normal.y));
+
+        cv::circle(mat_img, center, radius, color_iris, thickness);
+
+        draw_landmarks(mat_img, points_iris, color_point, thickness);
+    }
+}
 
 
 static void resize_pad(cv::Mat& mat_src, cv::Mat& mat_dst, float& scale, int pad[2])
@@ -911,7 +925,68 @@ static int recognize_from_image(AILIANetwork* ailia_blazeface, AILIANetwork* ail
         PRINT_OUT("BENCHMARK mode\n");
         for (int i = 0; i < BENCHMARK_ITERS; i++) {
             clock_t start = clock();
-            // TODO
+            // face detection
+            std::vector<cv::Mat> vec_predictions(2);
+            status = detect_face(ailia_blazeface, mat_input, vec_predictions);
+            if (status != AILIA_STATUS_SUCCESS) {
+                return -1;
+            }
+
+            std::vector<cv::Mat> vec_detections;
+            status = blazeface_postprocess(vec_predictions[0], vec_predictions[1], vec_detections);
+            if (status != AILIA_STATUS_SUCCESS) {
+                PRINT_ERR("blazeface_postprocess failed %d\n", status);
+                return -1;
+            }
+
+            if (vec_detections.size() > 0) {
+                // face landmark estimation
+                cv::Mat mat_image, mat_affines;
+                estimator_preprocess(mat_rgb, vec_detections[0], scale, pad, mat_image, mat_affines);
+
+                std::vector<cv::Mat> vec_estimates1(2);
+                status = estimate_landmarks(ailia_facemesh, mat_image, vec_estimates1);
+                if (status != AILIA_STATUS_SUCCESS) {
+                    return -1;
+                }
+
+                cv::Mat& mat_landmarks = vec_estimates1[0];
+                cv::Mat& mat_confidence = vec_estimates1[1];
+
+                // iris landmark estimation
+                cv::Mat mat_images;
+                std::vector<cv::Point2f> vec_origins;
+                iris_preprocess(mat_image, mat_landmarks, mat_images, vec_origins);
+
+                std::vector<cv::Mat> vec_estimates2(2);
+                status = estimate_iris(ailia_iris, mat_images, vec_estimates2);
+                if (status != AILIA_STATUS_SUCCESS) {
+                    return -1;
+                }
+
+                cv::Mat& mat_eyes1 = vec_estimates2[0];
+                cv::Mat& mat_iris1 = vec_estimates2[1];
+
+                iris_postprocess(mat_eyes1, mat_iris1, mat_affines, vec_origins);
+
+                for (int x = 0; x < mat_eyes1.size[0]; x++) {
+                    cv::Mat mat_eyes2;
+                    {
+                        cv::Range ranges[] = {cv::Range(x, x + 1), cv::Range::all(), cv::Range(0, 16), cv::Range(0, 2)};
+                        int shape[] = {mat_eyes1.size[1], 16};
+                        mat_eyes2 = mat_eyes1(ranges).clone().reshape(2, 2, shape);
+                    }
+
+                    cv::Mat mat_iris2;
+                    {
+                        cv::Range ranges[] = {cv::Range(x, x + 1), cv::Range::all(), cv::Range::all(), cv::Range(0, 2)};
+                        int shape[] = {mat_iris1.size[1], mat_iris1.size[2]};
+                        mat_iris2 = mat_iris1(ranges).clone().reshape(2, 2, shape);
+                    }
+
+                    draw_eye_iris(mat_img, mat_eyes2, mat_iris2);
+                }
+            }
             clock_t end = clock();
             PRINT_OUT("\tailia processing time %ld ms\n", ((end - start) * 1000) / CLOCKS_PER_SEC);
         }
@@ -976,12 +1051,12 @@ static int recognize_from_image(AILIANetwork* ailia_blazeface, AILIANetwork* ail
                     mat_iris2 = mat_iris1(ranges).clone().reshape(2, 2, shape);
                 }
 
-                // TODO
-                // draw_eye_iris(mat_img, mat_eyes2, mat_iris2);
+                draw_eye_iris(mat_img, mat_eyes2, mat_iris2);
             }
         }
     }
 
+    PRINT_OUT("saved at : %s\n", save_image_path.c_str());
     cv::imwrite(save_image_path.c_str(), mat_img);
 
     PRINT_OUT("Program finished successfully.\n");
