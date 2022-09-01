@@ -21,7 +21,7 @@ if [ ! "$1" = "-h" ] && [ ! "$1" = "--help" ]; then
         fi
     done
 
-    echo "ONNX file and Prototxt file are prepared!"
+    echo "ONNX files and Prototxt files are prepared!"
 fi
 
 ./mediapipe_iris $*
