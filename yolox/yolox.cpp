@@ -229,7 +229,7 @@ static int recognize_from_image(AILIADetector* detector)
         }
     }
 
-    status = prot_result(detector, img, COCO_CATEGORY);
+    status = plot_result(detector, img, COCO_CATEGORY);
     if (status != AILIA_STATUS_SUCCESS) {
         return -1;
     }
@@ -282,7 +282,7 @@ static int recognize_from_video(AILIADetector* detector)
             return -1;
         }
 
-        status = prot_result(detector, resized_img, COCO_CATEGORY, false);
+        status = plot_result(detector, resized_img, COCO_CATEGORY, false);
         if (status != AILIA_STATUS_SUCCESS) {
             return -1;
         }
