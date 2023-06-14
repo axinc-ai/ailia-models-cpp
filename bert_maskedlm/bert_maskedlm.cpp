@@ -27,8 +27,8 @@ bool debug = false;
 // Parameters
 // ======================
 
-#define WEIGHT_PATH "bert-base-japanese-whole-word-masking.onn"
-#define MODEL_PATH  "bert-base-japanese-whole-word-masking.onn.prototxt"
+#define WEIGHT_PATH "bert-base-japanese-whole-word-masking.onnx"
+#define MODEL_PATH  "bert-base-japanese-whole-word-masking.onnx.prototxt"
 
 #if defined(_WIN32) || defined(_WIN64)
 #define PRINT_OUT(...) fprintf_s(stdout, __VA_ARGS__)
@@ -49,7 +49,7 @@ static std::string model(MODEL_PATH);
 static bool benchmark  = false;
 static int args_env_id = -1;
 
-std::string input_text = "This is a cat.";
+std::string input_text = "私は[MASK]で動く。";
 
 
 // ======================
@@ -288,13 +288,12 @@ int forward(AILIANetwork *ailia, std::vector<float> *inputs[NUM_INPUTS], std::ve
 	return AILIA_STATUS_SUCCESS;
 }
 
-static int recognize_from_text(AILIANetwork* net, struct AILIATokenizer *tokenizer_source, struct AILIATokenizer *tokenizer_target)
+static int recognize_from_text(AILIANetwork* net, struct AILIATokenizer *tokenizer)
 {
 	int status = AILIA_STATUS_SUCCESS;
-	int pad_token_id = 32000;
 
 	PRINT_OUT("Input : %s\n", input_text.c_str());
-	std::vector<int> tokens = encode(input_text, tokenizer_source);
+	std::vector<int> tokens = encode(input_text, tokenizer);
 
 	std::vector<float> input_ids(tokens.size());
 	std::vector<float> attention_mask(tokens.size());
@@ -336,7 +335,7 @@ static int recognize_from_text(AILIANetwork* net, struct AILIATokenizer *tokeniz
 		}
 	}
 
-	std::string text = decode(tokens, tokenizer_target);
+	std::string text = decode(tokens, tokenizer);
 	PRINT_OUT("Output : %s\n",text.c_str());
 
 	PRINT_OUT("Output Tokens :\n");
@@ -427,32 +426,26 @@ int main(int argc, char **argv)
 		return -1;
 	}
 
-	AILIATokenizer *tokenizer_source, *tokenizer_target;
-	status = ailiaTokenizerCreate(&tokenizer_source, AILIA_TOKENIZER_TYPE_MARIAN, AILIA_TOKENIZER_FLAG_NONE);
+	AILIATokenizer *tokenizer;
+	status = ailiaTokenizerCreate(&tokenizer, AILIA_TOKENIZER_TYPE_BERT_JAPANESE_WORDPIECE, AILIA_TOKENIZER_FLAG_NONE);
 	if (status != 0){
 		printf("ailiaTokenizerCreate error %d\n", status);
 		return -1;
 	}
-	status = ailiaTokenizerOpenModelFile(tokenizer_source, "source.spm");
+	status = ailiaTokenizerOpenDictionaryFile(tokenizer, "./ipadic");
 	if (status != 0){
-		printf("ailiaTokenizerOpenModelFile error %d\n", status);
+		printf("ailiaTokenizerOpenDictionaryFile error %d\n", status);
 		return -1;
 	}
-	status = ailiaTokenizerCreate(&tokenizer_target, AILIA_TOKENIZER_TYPE_MARIAN, AILIA_TOKENIZER_FLAG_NONE);
+	status = ailiaTokenizerOpenVocabFile(tokenizer, "./vocab_wordpiece.txt");
 	if (status != 0){
-		printf("ailiaTokenizerCreate error %d\n", status);
-		return -1;
-	}
-	status = ailiaTokenizerOpenModelFile(tokenizer_target, "target.spm");
-	if (status != 0){
-		printf("ailiaTokenizerOpenModelFile error %d\n", status);
+		printf("ailiaTokenizerOpenVocabFile error %d\n", status);
 		return -1;
 	}
 
-	status = recognize_from_text(ailia, tokenizer_source, tokenizer_target);
+	status = recognize_from_text(ailia, tokenizer);
 
-	ailiaTokenizerDestroy(tokenizer_source);
-	ailiaTokenizerDestroy(tokenizer_target);
+	ailiaTokenizerDestroy(tokenizer);
 
 	ailiaDestroy(ailia);
 
