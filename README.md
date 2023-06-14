@@ -111,3 +111,40 @@ We are now converting to C++. Please wait to complete conversion.
 |:-----------|------------:|:------------:|:------------:|
 |[face_alignment](/face_alignment/)| [2D and 3D Face alignment library build using pytorch](https://github.com/1adrianb/face-alignment) | Pytorch | 1.2.1 and later |
 |[mediapipe_iris](/mediapipe_iris/) | [irislandmarks.pytorch](https://github.com/cedriclmenard/irislandmarks.pytorch) | Pytorch | 1.2.2 and later |
+
+## Natural language processing
+
+| Name | Detail | Exported From | Supported Ailia Version |
+|:-----------|------------:|:------------:|:------------:|
+|[fugumt-en-ja](/fugumt) | [Fugu-Machine Translator](https://github.com/s-taka/fugumt) | Pytorch | 1.2.9 and later |
+
+# For NLP models
+
+ailia.tokenizer is additionally required to use NLP models.
+
+### Download ailia.tokenizer
+
+You can download a free evaluation version that allows you to evaluate the ailia.tokenizer.
+Please download from the trial link below.
+
+https://axip-console.appspot.com/trial/terms/AILIA-TOKENIZER?lang=en
+
+### Install ailia SDK
+
+Copy the files located in the folder [ailia Tokenizer]/library/ to the folder ./ailia_tokenizer/library/.
+
+### Build
+
+```
+cd fugumt
+export AILIA_LIBRARY_PATH=../ailia/library
+export AILIA_TOKENIZER_PATH=../ailia_tokenizer/library
+cmake .
+make
+```
+
+### Run
+
+```
+./fugumt.sh
+```
