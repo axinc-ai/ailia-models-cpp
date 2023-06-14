@@ -118,6 +118,7 @@ We are now converting to C++. Please wait to complete conversion.
 |:-----------|------------:|:------------:|:------------:|
 |[fugumt-en-ja](/fugumt) | [Fugu-Machine Translator](https://github.com/s-taka/fugumt) | Pytorch | 1.2.9 and later |
 |[bert_maskedlm](/bert_maskedlm) | [huggingface/transformers](https://github.com/huggingface/transformers) | Pytorch | 1.2.5 and later |
+|[sentence_transformers](/sentence_transformers) | [sentence transformers](https://huggingface.co/sentence-transformers/paraphrase-multilingual-mpnet-base-v2) | Pytorch | 1.2.7 and later |
 
 # For NLP models
 
