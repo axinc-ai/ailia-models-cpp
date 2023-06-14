@@ -416,7 +416,13 @@ int main(int argc, char **argv)
 	for (unsigned int i = 0; i < env_count; i++) {
 		AILIAEnvironment* env;
 		status = ailiaGetEnvironment(&env, i, AILIA_ENVIRONMENT_VERSION);
-		PRINT_OUT("env_id : %d type : %d name : %s\n", env->id, env->type, env->name);
+		bool is_fp16 = (env->props & AILIA_ENVIRONMENT_PROPERTY_FP16) != 0;
+		PRINT_OUT("env_id : %d type : %d name : %s", env->id, env->type, env->name);
+		if (is_fp16){
+			PRINT_OUT(" (Warning : FP16 backend is not worked this model)\n");
+			continue;
+		}
+		PRINT_OUT("\n");
 		if (args_env_id == env->id){
 			env_id = env->id;
 		}
