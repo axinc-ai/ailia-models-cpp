@@ -20,6 +20,8 @@
 #include "ailia.h"
 #include "ailia_tokenizer.h"
 
+bool debug = false;
+
 
 // ======================
 // Parameters
@@ -37,6 +39,10 @@
 #endif
 
 #define BENCHMARK_ITERS 5
+
+#define NUM_INPUTS 27
+#define NUM_OUTPUTS 25
+#define NUM_PAST_KEY 24
 
 static std::string weight(WEIGHT_PATH);
 static std::string model(MODEL_PATH);
@@ -175,7 +181,6 @@ std::vector<int> encode(std::string text, struct AILIATokenizer *tokenizer){
 		return tokens;
 	}
 	tokens.resize(count);
-	PRINT_OUT("ailiaTokenizerGetTokenCount %d\n", count);
 	status = ailiaTokenizerGetTokens(tokenizer, &tokens[0], count);
 	if (status != AILIA_STATUS_SUCCESS){
 		setErrorDetail("ailiaTokenizerGetTokens", "");
@@ -209,11 +214,10 @@ std::string decode(std::vector<int> &tokens, struct AILIATokenizer *tokenizer){
 	return std::string(p_text);
 }
 
-int forward(AILIANetwork *ailia, std::vector<float> *inputs[27], std::vector<float> *outputs[25]){
+int forward(AILIANetwork *ailia, std::vector<float> *inputs[NUM_INPUTS], std::vector<float> *outputs[NUM_OUTPUTS]){
 	int status;
-	bool debug = false;
 
-	for (int i = 0; i < 27; i++){
+	for (int i = 0; i < NUM_INPUTS; i++){
 		unsigned int input_blob_idx = 0;
 		status = ailiaGetBlobIndexByInputIndex(ailia, &input_blob_idx, i);
 		if (status != AILIA_STATUS_SUCCESS) {
@@ -270,7 +274,7 @@ int forward(AILIANetwork *ailia, std::vector<float> *inputs[27], std::vector<flo
 		return status;
 	}
 
-	for (int i = 0; i < 25; i++){
+	for (int i = 0; i < NUM_OUTPUTS; i++){
 		unsigned int output_blob_idx = 0;
 		status = ailiaGetBlobIndexByOutputIndex(ailia, &output_blob_idx, i);
 		if (status != AILIA_STATUS_SUCCESS) {
@@ -313,9 +317,9 @@ static int recognize_from_text(AILIANetwork* net, struct AILIATokenizer *tokeniz
 	std::vector<float> attention_mask(tokens.size());
 	int num_beams = 1;
 	std::vector<float> decoder_input_ids(num_beams);
-	std::vector<float> past_key_values[24];
+	std::vector<float> past_key_values[NUM_PAST_KEY];
 
-	PRINT_OUT("Token :\n");
+	PRINT_OUT("Input Tokens :\n");
 	for (int i = 0; i < tokens.size(); i++){
 		input_ids[i] = (float)tokens[i];
 		attention_mask[i] = 1;
@@ -325,32 +329,38 @@ static int recognize_from_text(AILIANetwork* net, struct AILIATokenizer *tokeniz
 	for (int i = 0; i < num_beams; i++){
 		decoder_input_ids[i] = pad_token_id;
 	}
-	for (int i = 0; i < 24; i++){
+	for (int i = 0; i < NUM_PAST_KEY; i++){
 		past_key_values[i].resize(num_beams * 8 * 0 * 64);
 	}
 
-	std::vector<float> *inputs[27];
+	std::vector<float> *inputs[NUM_INPUTS];
 	inputs[0] = &input_ids;
 	inputs[1] = &attention_mask;
 	inputs[2] = &decoder_input_ids;
-	for (int i = 0; i < 24; i++){
+	for (int i = 0; i < NUM_PAST_KEY; i++){
 		inputs[3 + i] = &past_key_values[i];
 	}
 
 	std::vector<float> logits;
 	//std::vector<float> past_key_values;
 
-	std::vector<float> *outputs[25];
+	std::vector<float> *outputs[NUM_OUTPUTS];
 	outputs[0] = &logits;
-	for (int i = 0; i < 24; i++){
+	for (int i = 0; i < NUM_PAST_KEY; i++){
 		outputs[1 + i] = &past_key_values[i];
 	}
 
 	tokens.clear();
 	while(true){
-		std::string text = decode(tokens, tokenizer_target);
-		printf("Loop %d %s\n", tokens.size(), text.c_str());
+		if (debug){
+			std::string text = decode(tokens, tokenizer_target);
+			printf("Loop %d %s\n", (int)tokens.size(), text.c_str());
+		}
+
 		status = forward(net, inputs, outputs);
+		if (status != AILIA_STATUS_SUCCESS){
+			return status;
+		}
 
 		logits[pad_token_id] = -INFINITY;
 
@@ -368,7 +378,9 @@ static int recognize_from_text(AILIANetwork* net, struct AILIATokenizer *tokeniz
 			}
 		}
 
-		PRINT_OUT("Token %d (%f)\n", arg_max, prob);
+		if (debug){
+			PRINT_OUT("Token %d (%f)\n", arg_max, prob);
+		}
 
 		tokens.push_back(arg_max);
 
@@ -385,11 +397,12 @@ static int recognize_from_text(AILIANetwork* net, struct AILIATokenizer *tokeniz
 	std::string text = decode(tokens, tokenizer_target);
 	PRINT_OUT("Output : %s\n",text.c_str());
 
-	//ailiaPredict();
-
-	if (status != AILIA_STATUS_SUCCESS) {
-		return -1;
+	PRINT_OUT("Output Tokens :\n");
+	for (int i = 0; i < tokens.size(); i++){
+		attention_mask[i] = 1;
+		PRINT_OUT("%d ", tokens[i]);
 	}
+	PRINT_OUT("\n");
 
 	PRINT_OUT("Program finished successfully.\n");
 
