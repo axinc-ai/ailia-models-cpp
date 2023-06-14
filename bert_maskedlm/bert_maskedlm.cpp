@@ -1,7 +1,7 @@
 ﻿/*******************************************************************
 *
 *    DESCRIPTION:
-*      AILIA fugumt sample
+*      AILIA BERT maskedLM sample
 *    AUTHOR:
 *
 *    DATE:2023/06/14
@@ -42,6 +42,7 @@ bool debug = false;
 
 #define NUM_INPUTS 3
 #define NUM_OUTPUTS 1
+#define NUM_WORDS 32000
 
 static std::string weight(WEIGHT_PATH);
 static std::string model(MODEL_PATH);
@@ -155,11 +156,30 @@ void softmax(float *data, int n){
 	}
 }
 
-void log_softmax(float *data, int n){
-	softmax(data,n);
-	for(int i=0;i<n;i++){
-		data[i]=log(data[i]);
+std::vector<int> topk(const float *logits, int num_words, int kn){
+	std::vector<int> results;
+	for (int k = 0; k < kn; k++){
+		float prob = -INFINITY;
+		int arg_max = 0;
+		for (int j = 0; j < num_words; j++){
+			if (prob < logits[j]){
+				bool already = false;
+				for (int l = 0; l < k; l++){
+					if (results[l] == j){
+						already = true;
+						break;
+					}
+				}
+				if (already){
+					continue;
+				}
+				prob = logits[j];
+				arg_max = j;
+			}
+		}
+		results.push_back(arg_max);
 	}
+	return results;
 }
 
 void setErrorDetail(const char *func, const char *detail){
@@ -312,7 +332,7 @@ static int recognize_from_text(AILIANetwork* net, struct AILIATokenizer *tokeniz
 	inputs[1] = &attention_mask;
 	inputs[2] = &token_type_ids;
 
-	std::vector<float> logits(tokens.size() * 32000);
+	std::vector<float> logits(tokens.size() * NUM_WORDS);
 	std::vector<float> *outputs[NUM_OUTPUTS];
 	outputs[0] = &logits;
 
@@ -321,17 +341,17 @@ static int recognize_from_text(AILIANetwork* net, struct AILIATokenizer *tokeniz
 		return status;
 	}
 
+	PRINT_OUT("Predictions :\n");
 	for (int i = 0; i < tokens.size(); i++){
-		if (tokens[i] == 4){ // mask id
-			float prob = -INFINITY;
-			int arg_max = 0;
-			for (int j = 0; j < 32000; j++){
-				if (prob < logits[i*32000 + j]){
-					prob = logits[i*32000 + j];
-					arg_max = i;
-				}
+		const int mask_id = 4;
+		if (tokens[i] == mask_id){
+			std::vector<int> topk_list = topk(&logits[i * NUM_WORDS], NUM_WORDS, 5);
+			for (int j = 0; j < topk_list.size(); j++){
+				std::vector<int> one_token;
+				one_token.push_back(topk_list[j]);
+				PRINT_OUT("%d %s %f\n", j, decode(one_token, tokenizer).c_str(), logits[i * NUM_WORDS + topk_list[j]]);
 			}
-			tokens[i] = arg_max;
+			tokens[i] = topk_list[0];
 		}
 	}
 
@@ -370,12 +390,12 @@ int main(int argc, char **argv)
 	for (unsigned int i = 0; i < env_count; i++) {
 		AILIAEnvironment* env;
 		status = ailiaGetEnvironment(&env, i, AILIA_ENVIRONMENT_VERSION);
-		bool is_fp16 = (env->props & AILIA_ENVIRONMENT_PROPERTY_FP16) != 0;
+		//bool is_fp16 = (env->props & AILIA_ENVIRONMENT_PROPERTY_FP16) != 0;
 		PRINT_OUT("env_id : %d type : %d name : %s", env->id, env->type, env->name);
-		if (is_fp16){
-			PRINT_OUT(" (Warning : FP16 backend is not worked this model)\n");
-			continue;
-		}
+		//if (is_fp16){
+		//	PRINT_OUT(" (Warning : FP16 backend is not worked this model)\n");
+		//	continue;
+		//}
 		PRINT_OUT("\n");
 		if (args_env_id == env->id){
 			env_id = env->id;
