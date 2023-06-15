@@ -312,13 +312,14 @@ std::vector<float> mean_pool(std::vector<float> &features){
 	std::vector<float> mean(NUM_STATE);
 	for (int j = 0; j < NUM_STATE; j++){
 		float sum = 0;
-		for (int i = 0; i < features.size() / NUM_STATE; i++){
+		int num_sentence = features.size() / NUM_STATE;
+		for (int i = 0; i < num_sentence; i++){
 			sum += features[i * NUM_STATE + j];
 		}
-		if (sum < 1e-9){
-			sum = 1e-9;
-		}
-		sum /= (features.size() / NUM_STATE);
+		//if (sum < 1e-9){
+		//	sum = 1e-9;
+		//}
+		sum /= num_sentence;
 		mean[j] = sum;
 	}
 	return mean;
@@ -372,7 +373,7 @@ std::vector<std::string> open_texts(std::string parh){
 	return split(&text[0]);
 }
 
-std::vector<float> calc_embedding(AILIANetwork* net, struct AILIATokenizer *tokenizer, std::string text)
+std::vector<float> calc_embedding(AILIANetwork* net, struct AILIATokenizer *tokenizer, std::string text, bool prompt)
 {
 	//PRINT_OUT("Input : %s\n", text.c_str());
 	std::vector<int> tokens = encode(text, tokenizer);
@@ -380,13 +381,19 @@ std::vector<float> calc_embedding(AILIANetwork* net, struct AILIATokenizer *toke
 	std::vector<float> input_ids(tokens.size());
 	std::vector<float> attention_mask(tokens.size());
 
-	//PRINT_OUT("Input Tokens :\n");
+	if (prompt){
+		PRINT_OUT("Input Tokens :\n");
+	}
 	for (int i = 0; i < tokens.size(); i++){
 		input_ids[i] = (float)tokens[i];
 		attention_mask[i] = 1;
-	//	PRINT_OUT("%d ", (int)input_ids[i]);
+		if (prompt){
+			PRINT_OUT("%d ", (int)input_ids[i]);
+		}
 	}
-	//PRINT_OUT("\n");
+	if (prompt){
+		PRINT_OUT("\n");
+	}
 
 	std::vector<float> *inputs[NUM_INPUTS];
 	inputs[0] = &input_ids;
@@ -410,16 +417,19 @@ std::vector<float> calc_embedding(AILIANetwork* net, struct AILIATokenizer *toke
 	return pool_features;
 }
 
-float cos_similarity(std::vector<float> & vec1, std::vector<float> & vec2){
-	float sum = 0;
+float norm(std::vector<float> & vec1){
 	float norm1 = 0;
-	float norm2 = 0;
 	for (int i = 0; i < vec1.size(); i++){
 		norm1 += vec1[i] * vec1[i];
-		norm2 += vec2[i] * vec2[i];
 	}
 	norm1 = sqrt(norm1);
-	norm2 = sqrt(norm2);
+	return norm1;
+}
+
+float cos_similarity(std::vector<float> & vec1, std::vector<float> & vec2){
+	float sum = 0;
+	float norm1 = norm(vec1);
+	float norm2 = norm(vec2);
 	for (int i = 0; i < vec1.size(); i++){
 		sum += (vec1[i] / norm1) * (vec2[i] / norm2);
 	}
@@ -439,20 +449,22 @@ static int recognize_from_text(AILIANetwork* net, struct AILIATokenizer *tokeniz
 	for (int i = 0; i < texts.size(); i++){
 		PRINT_OUT("\r%d/%d", i, texts.size());
 		fflush(stdout);
-		std::vector<float> embedding = calc_embedding(net, tokenizer, texts[i]);
+		std::vector<float> embedding = calc_embedding(net, tokenizer, texts[i], false);
 		embeddings.push_back(embedding);
 	}
 	PRINT_OUT("\n");
 
 	// Embedding Query
 	std::string query_str = "nnapiの速度";
-	std::vector<float> query_embedding = calc_embedding(net, tokenizer, query_str);
+	std::vector<float> query_embedding = calc_embedding(net, tokenizer, query_str, true);
+	PRINT_OUT("Query norm %f\n", norm(query_embedding));
 
 	// Search
 	float max_score = 0.0f;
 	int max_i = 0;
 	for (int i = 0; i < texts.size(); i++){
 		float score = cos_similarity(query_embedding, embeddings[i]);
+		PRINT_OUT("%f ",score);
 		if (max_score < score){
 			max_score = score;
 			max_i = i;
