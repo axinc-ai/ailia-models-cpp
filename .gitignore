@@ -1,0 +1,13 @@
+﻿/**/CMakeFiles/**
+/ailia/**
+/ailia_trial/**
+/ailia_tokenizer/**
+*.onnx
+*.prototxt
+CMakeCache.txt
+.vscode
+*.zip
+cmake_install.cmake
+Makefile
+ipadic
+*.spm
