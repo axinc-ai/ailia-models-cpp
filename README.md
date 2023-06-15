@@ -67,6 +67,12 @@ make
 
 We are now converting to C++. Please wait to complete conversion.
 
+## Audio processing
+
+| Name | Detail | Exported From | Supported Ailia Version |
+|:-----------|------------:|:------------:|:------------:|
+| [silero-vad](/silero-vad/) | [Silero VAD](https://github.com/snakers4/silero-vad) | Pytorch | 1.2.15 and later | |
+
 ## Image classification
 
 | Name | Detail | Exported From | Supported Ailia Version |
