@@ -50,7 +50,7 @@ static std::string model(MODEL_PATH);
 static bool benchmark  = false;
 static int args_env_id = -1;
 
-std::string input_text = "NNAPIについて教えてください。";
+std::string input_text = "nnapiの速度";
 
 
 // ======================
@@ -316,9 +316,6 @@ std::vector<float> mean_pool(std::vector<float> &features){
 		for (int i = 0; i < num_sentence; i++){
 			sum += features[i * NUM_STATE + j];
 		}
-		//if (sum < 1e-9){
-		//	sum = 1e-9;
-		//}
 		sum /= num_sentence;
 		mean[j] = sum;
 	}
@@ -342,16 +339,11 @@ std::vector<std::string> split(std::string text) {
 		pos += delimiter.length() + 1;
 	}
 
-	//printf("text %s\n", text.c_str());
-	
 	// Split sentences and filter based on minimum length
 	pos = 0;
 	while ((pos = text.find(delimiter, pos)) != std::string::npos) {
 		std::string sentence = text.substr(0, pos + delimiter.length());
 		text.erase(0, pos + delimiter.length());
-
-		//printf("%d %s\n", pos, sentence.c_str());
-
 		if (sentence.length() > MIN_LENGTH) {
 			sents.push_back(sentence);
 		}
@@ -375,30 +367,28 @@ std::vector<std::string> open_texts(std::string parh){
 
 std::vector<float> calc_embedding(AILIANetwork* net, struct AILIATokenizer *tokenizer, std::string text, bool prompt)
 {
-	//PRINT_OUT("Input : %s\n", text.c_str());
 	std::vector<int> tokens = encode(text, tokenizer);
 
 	std::vector<float> input_ids(tokens.size());
 	std::vector<float> attention_mask(tokens.size());
 
-	if (prompt){
+	if (prompt && debug){
 		PRINT_OUT("Input Tokens :\n");
 	}
 	for (int i = 0; i < tokens.size(); i++){
 		input_ids[i] = (float)tokens[i];
 		attention_mask[i] = 1;
-		if (prompt){
+		if (prompt && debug){
 			PRINT_OUT("%d ", (int)input_ids[i]);
 		}
 	}
-	if (prompt){
+	if (prompt && debug){
 		PRINT_OUT("\n");
 	}
 
 	std::vector<float> *inputs[NUM_INPUTS];
 	inputs[0] = &input_ids;
 	inputs[1] = &attention_mask;
-	//inputs[2] = &token_type_ids;
 
 	std::vector<float> features(tokens.size() * NUM_STATE);
 	std::vector<float> temp(NUM_STATE);
@@ -455,32 +445,28 @@ static int recognize_from_text(AILIANetwork* net, struct AILIATokenizer *tokeniz
 	PRINT_OUT("\n");
 
 	// Embedding Query
-	std::string query_str = "nnapiの速度";
-	std::vector<float> query_embedding = calc_embedding(net, tokenizer, query_str, true);
-	PRINT_OUT("Query norm %f\n", norm(query_embedding));
+	std::vector<float> query_embedding = calc_embedding(net, tokenizer, input_text, true);
+	if (debug){
+		PRINT_OUT("Query norm %f\n", norm(query_embedding));
+	}
 
 	// Search
 	float max_score = 0.0f;
 	int max_i = 0;
 	for (int i = 0; i < texts.size(); i++){
 		float score = cos_similarity(query_embedding, embeddings[i]);
-		PRINT_OUT("%f ",score);
+		if (debug){
+			PRINT_OUT("%f ",score);
+		}
 		if (max_score < score){
 			max_score = score;
 			max_i = i;
 		}
 	}
 
-	PRINT_OUT("Query : %s\n", query_str.c_str());
+	PRINT_OUT("Query : %s\n", input_text.c_str());
 	PRINT_OUT("Result : %s\n", texts[max_i].c_str());
 	PRINT_OUT("Similarity : %f\n", max_score);
-
-	//PRINT_OUT("Embeddings :\n");
-	//for (int i = 0; i < pool_features.size(); i++){
-	//	PRINT_OUT("%f ", pool_features[i]);
-	//}
-	//PRINT_OUT("\n");
-
 	PRINT_OUT("Program finished successfully.\n");
 
 	return AILIA_STATUS_SUCCESS;
