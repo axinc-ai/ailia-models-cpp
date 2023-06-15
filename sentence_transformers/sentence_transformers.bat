@@ -3,6 +3,7 @@ setlocal enabledelayedexpansion
 cd %~dp0
 
 set MODEL=sentence-transformers-japanese
+set EXE=sentence-transformers
 set FILE1=paraphrase-multilingual-mpnet-base-v2.onnx
 set FILE2=paraphrase-multilingual-mpnet-base-v2.onnx.prototxt
 set FILE3=sentencepiece.bpe.model
@@ -28,4 +29,4 @@ if not "%1" == "-h" if not "%1" == "--help" (
     )
 )
 rem execute
-.\%MODEL%.exe %*
+.\%EXE%.exe %*

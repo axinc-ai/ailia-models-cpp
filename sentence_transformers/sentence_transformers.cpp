@@ -1,10 +1,10 @@
 ﻿/*******************************************************************
 *
 *    DESCRIPTION:
-*      AILIA BERT maskedLM sample
+*      AILIA Sentence Transformers sample
 *    AUTHOR:
 *
-*    DATE:2023/06/14
+*    DATE:2023/06/15
 *
 *******************************************************************/
 
@@ -27,8 +27,8 @@ bool debug = false;
 // Parameters
 // ======================
 
-#define WEIGHT_PATH "bert-base-japanese-whole-word-masking.onnx"
-#define MODEL_PATH  "bert-base-japanese-whole-word-masking.onnx.prototxt"
+#define WEIGHT_PATH "paraphrase-multilingual-mpnet-base-v2.onnx"
+#define MODEL_PATH  "paraphrase-multilingual-mpnet-base-v2.onnx.prototxt"
 
 #if defined(_WIN32) || defined(_WIN64)
 #define PRINT_OUT(...) fprintf_s(stdout, __VA_ARGS__)
@@ -40,9 +40,9 @@ bool debug = false;
 
 #define BENCHMARK_ITERS 5
 
-#define NUM_INPUTS 3
-#define NUM_OUTPUTS 1
-#define NUM_WORDS 32000
+#define NUM_INPUTS 2
+#define NUM_OUTPUTS 2
+#define NUM_STATE 768
 
 static std::string weight(WEIGHT_PATH);
 static std::string model(MODEL_PATH);
@@ -50,7 +50,7 @@ static std::string model(MODEL_PATH);
 static bool benchmark  = false;
 static int args_env_id = -1;
 
-std::string input_text = "私は[MASK]で動く。";
+std::string input_text = "NNAPIについて教えてください。";
 
 
 // ======================
@@ -59,7 +59,7 @@ std::string input_text = "私は[MASK]で動く。";
 
 static void print_usage()
 {
-	PRINT_OUT("usage: bert_maskedlm [-h] [-i TEXT] [-b] [-e ENV_ID]\n");
+	PRINT_OUT("usage: sentenace_transformers [-h] [-i TEXT] [-b] [-e ENV_ID]\n");
 	return;
 }
 
@@ -67,7 +67,7 @@ static void print_usage()
 static void print_help()
 {
 	PRINT_OUT("\n");
-	PRINT_OUT("bert_maskedlm model\n");
+	PRINT_OUT("sentenace_transformers model\n");
 	PRINT_OUT("\n");
 	PRINT_OUT("optional arguments:\n");
 	PRINT_OUT("  -h, --help            show this help message and exit\n");
@@ -308,62 +308,166 @@ int forward(AILIANetwork *ailia, std::vector<float> *inputs[NUM_INPUTS], std::ve
 	return AILIA_STATUS_SUCCESS;
 }
 
-static int recognize_from_text(AILIANetwork* net, struct AILIATokenizer *tokenizer)
-{
-	int status = AILIA_STATUS_SUCCESS;
+std::vector<float> mean_pool(std::vector<float> &features){
+	std::vector<float> mean(NUM_STATE);
+	for (int j = 0; j < NUM_STATE; j++){
+		float sum = 0;
+		for (int i = 0; i < features.size() / NUM_STATE; i++){
+			sum += features[i * NUM_STATE + j];
+		}
+		if (sum < 1e-9){
+			sum = 1e-9;
+		}
+		sum /= (features.size() / NUM_STATE);
+		mean[j] = sum;
+	}
+	return mean;
+}
 
-	PRINT_OUT("Input : %s\n", input_text.c_str());
-	std::vector<int> tokens = encode(input_text, tokenizer);
+std::vector<std::string> split(std::string text) {
+	const int MIN_LENGTH = 5;
+	std::string delimiter = u8"。";
+	std::vector<std::string> sents;
+	
+	// Replace newline characters and split into sentences
+	size_t pos = 0;
+	while ((pos = text.find("\n", pos)) != std::string::npos) {
+		text.replace(pos, 1, "");
+	}
+	
+	pos = 0;
+	while ((pos = text.find(delimiter, pos)) != std::string::npos) {
+		text.replace(pos, delimiter.length(), delimiter + " ");
+		pos += delimiter.length() + 1;
+	}
+
+	//printf("text %s\n", text.c_str());
+	
+	// Split sentences and filter based on minimum length
+	pos = 0;
+	while ((pos = text.find(delimiter, pos)) != std::string::npos) {
+		std::string sentence = text.substr(0, pos + delimiter.length());
+		text.erase(0, pos + delimiter.length());
+
+		//printf("%d %s\n", pos, sentence.c_str());
+
+		if (sentence.length() > MIN_LENGTH) {
+			sents.push_back(sentence);
+		}
+		pos = 0;
+	}
+	
+	return sents;
+}
+
+std::vector<std::string> open_texts(std::string parh){
+	FILE *fp = fopen("sample.txt", "r");
+	std::vector<char> text;
+	while(!feof(fp)){
+		char c = fgetc(fp);
+		text.push_back(c);
+	}
+	text.push_back('\0');
+	fclose(fp);
+	return split(&text[0]);
+}
+
+std::vector<float> calc_embedding(AILIANetwork* net, struct AILIATokenizer *tokenizer, std::string text)
+{
+	//PRINT_OUT("Input : %s\n", text.c_str());
+	std::vector<int> tokens = encode(text, tokenizer);
 
 	std::vector<float> input_ids(tokens.size());
 	std::vector<float> attention_mask(tokens.size());
-	std::vector<float> token_type_ids(tokens.size());
 
-	PRINT_OUT("Input Tokens :\n");
+	//PRINT_OUT("Input Tokens :\n");
 	for (int i = 0; i < tokens.size(); i++){
 		input_ids[i] = (float)tokens[i];
 		attention_mask[i] = 1;
-		PRINT_OUT("%d ", (int)input_ids[i]);
+	//	PRINT_OUT("%d ", (int)input_ids[i]);
 	}
-	PRINT_OUT("\n");
+	//PRINT_OUT("\n");
 
 	std::vector<float> *inputs[NUM_INPUTS];
 	inputs[0] = &input_ids;
 	inputs[1] = &attention_mask;
-	inputs[2] = &token_type_ids;
+	//inputs[2] = &token_type_ids;
 
-	std::vector<float> logits(tokens.size() * NUM_WORDS);
+	std::vector<float> features(tokens.size() * NUM_STATE);
+	std::vector<float> temp(NUM_STATE);
+
 	std::vector<float> *outputs[NUM_OUTPUTS];
-	outputs[0] = &logits;
+	outputs[0] = &features;
+	outputs[1] = &temp;
 
-	status = forward(net, inputs, outputs);
+	std::vector<float> pool_features;
+	int status = forward(net, inputs, outputs);
 	if (status != AILIA_STATUS_SUCCESS){
-		return status;
+		return pool_features;
 	}
 
-	PRINT_OUT("Predictions :\n");
-	for (int i = 0; i < tokens.size(); i++){
-		const int mask_id = 4;
-		if (tokens[i] == mask_id){
-			std::vector<int> topk_list = topk(&logits[i * NUM_WORDS], NUM_WORDS, 5);
-			for (int j = 0; j < topk_list.size(); j++){
-				std::vector<int> one_token;
-				one_token.push_back(topk_list[j]);
-				PRINT_OUT("%d %s %f\n", j, decode(one_token, tokenizer).c_str(), logits[i * NUM_WORDS + topk_list[j]]);
-			}
-			tokens[i] = topk_list[0];
+	pool_features = mean_pool(features);
+	return pool_features;
+}
+
+float cos_similarity(std::vector<float> & vec1, std::vector<float> & vec2){
+	float sum = 0;
+	float norm1 = 0;
+	float norm2 = 0;
+	for (int i = 0; i < vec1.size(); i++){
+		norm1 += vec1[i] * vec1[i];
+		norm2 += vec2[i] * vec2[i];
+	}
+	norm1 = sqrt(norm1);
+	norm2 = sqrt(norm2);
+	for (int i = 0; i < vec1.size(); i++){
+		sum += (vec1[i] / norm1) * (vec2[i] / norm2);
+	}
+	return sum;
+}
+
+static int recognize_from_text(AILIANetwork* net, struct AILIATokenizer *tokenizer)
+{
+	int status = AILIA_STATUS_SUCCESS;
+
+	// Open database
+	std::vector<std::string> texts = open_texts(std::string("sample.txt"));
+
+	// Embedding
+	std::vector< std::vector<float> > embeddings;
+	PRINT_OUT("Calculating embeddings\n");
+	for (int i = 0; i < texts.size(); i++){
+		PRINT_OUT("\r%d/%d", i, texts.size());
+		fflush(stdout);
+		std::vector<float> embedding = calc_embedding(net, tokenizer, texts[i]);
+		embeddings.push_back(embedding);
+	}
+	PRINT_OUT("\n");
+
+	// Embedding Query
+	std::string query_str = "nnapiの速度";
+	std::vector<float> query_embedding = calc_embedding(net, tokenizer, query_str);
+
+	// Search
+	float max_score = 0.0f;
+	int max_i = 0;
+	for (int i = 0; i < texts.size(); i++){
+		float score = cos_similarity(query_embedding, embeddings[i]);
+		if (max_score < score){
+			max_score = score;
+			max_i = i;
 		}
 	}
 
-	std::string text = decode(tokens, tokenizer);
-	PRINT_OUT("Output : %s\n",text.c_str());
+	PRINT_OUT("Query : %s\n", query_str.c_str());
+	PRINT_OUT("Result : %s\n", texts[max_i].c_str());
+	PRINT_OUT("Similarity : %f\n", max_score);
 
-	PRINT_OUT("Output Tokens :\n");
-	for (int i = 0; i < tokens.size(); i++){
-		attention_mask[i] = 1;
-		PRINT_OUT("%d ", tokens[i]);
-	}
-	PRINT_OUT("\n");
+	//PRINT_OUT("Embeddings :\n");
+	//for (int i = 0; i < pool_features.size(); i++){
+	//	PRINT_OUT("%f ", pool_features[i]);
+	//}
+	//PRINT_OUT("\n");
 
 	PRINT_OUT("Program finished successfully.\n");
 
@@ -390,12 +494,12 @@ int main(int argc, char **argv)
 	for (unsigned int i = 0; i < env_count; i++) {
 		AILIAEnvironment* env;
 		status = ailiaGetEnvironment(&env, i, AILIA_ENVIRONMENT_VERSION);
-		//bool is_fp16 = (env->props & AILIA_ENVIRONMENT_PROPERTY_FP16) != 0;
+		bool is_fp16 = (env->props & AILIA_ENVIRONMENT_PROPERTY_FP16) != 0;
 		PRINT_OUT("env_id : %d type : %d name : %s", env->id, env->type, env->name);
-		//if (is_fp16){
-		//	PRINT_OUT(" (Warning : FP16 backend is not worked this model)\n");
-		//	continue;
-		//}
+		if (is_fp16){
+			PRINT_OUT(" (Warning : FP16 backend is not worked this model)\n");
+			continue;
+		}
 		PRINT_OUT("\n");
 		if (args_env_id == env->id){
 			env_id = env->id;
@@ -447,19 +551,14 @@ int main(int argc, char **argv)
 	}
 
 	AILIATokenizer *tokenizer;
-	status = ailiaTokenizerCreate(&tokenizer, AILIA_TOKENIZER_TYPE_BERT_JAPANESE_WORDPIECE, AILIA_TOKENIZER_FLAG_NONE);
+	status = ailiaTokenizerCreate(&tokenizer, AILIA_TOKENIZER_TYPE_XLM_ROBERTA, AILIA_TOKENIZER_FLAG_NONE);
 	if (status != 0){
 		printf("ailiaTokenizerCreate error %d\n", status);
 		return -1;
 	}
-	status = ailiaTokenizerOpenDictionaryFile(tokenizer, "./ipadic");
+	status = ailiaTokenizerOpenModelFile(tokenizer, "sentencepiece.bpe.model");
 	if (status != 0){
-		printf("ailiaTokenizerOpenDictionaryFile error %d\n", status);
-		return -1;
-	}
-	status = ailiaTokenizerOpenVocabFile(tokenizer, "./vocab_wordpiece.txt");
-	if (status != 0){
-		printf("ailiaTokenizerOpenVocabFile error %d\n", status);
+		printf("ailiaTokenizerOpenModelFile error %d\n", status);
 		return -1;
 	}
 
