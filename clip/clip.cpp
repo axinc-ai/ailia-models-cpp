@@ -13,6 +13,8 @@
 #include <time.h>
 #include <vector>
 #include <string>
+#include <algorithm>
+
 #include <opencv2/opencv.hpp>
 
 #if defined(_WIN32) || defined(_WIN64)
@@ -69,6 +71,7 @@ static std::string image_path(IMAGE_PATH);
 static std::vector<std::string> texts;
 
 static bool benchmark  = false;
+static int args_env_id = -1;
 
 
 // ======================
@@ -77,7 +80,7 @@ static bool benchmark  = false;
 
 static void print_usage()
 {
-    PRINT_OUT("usage: clip [-h] [-i IMAGE] [-b]\n");
+    PRINT_OUT("usage: clip [-h] [-i IMAGE] [-b] [-e ENV_ID]\n");
     return;
 }
 
@@ -96,6 +99,8 @@ static void print_help()
     PRINT_OUT("  -b, --benchmark       Running the inference on the same input 5 times to\n");
     PRINT_OUT("                        measure execution performance. (Cannot be used in\n");
     PRINT_OUT("                        video mode)\n");
+	PRINT_OUT("  -e ENV_ID, --env_id ENV_ID\n");
+	PRINT_OUT("                        The backend environment id.\n");
     return;
 }
 
@@ -125,6 +130,9 @@ static int argument_parser(int argc, char **argv)
                 print_help();
                 return -1;
             }
+			else if (arg == "-e" || arg == "--env_id") {
+				status = 4;
+			}
             else {
                 print_usage();
                 print_error(arg);
@@ -136,6 +144,9 @@ static int argument_parser(int argc, char **argv)
             case 1:
                 image_path = arg;
                 break;
+			case 4:
+				args_env_id = atoi(arg.c_str());
+				break;
             default:
                 print_usage();
                 print_error(arg);
@@ -161,10 +172,10 @@ static int argument_parser(int argc, char **argv)
 static void preprocess_image(const cv::Mat& simg, cv::Mat& dimg)
 {
     if (simg.channels() == 3) {
-        cv::cvtColor(simg, dimg, cv::COLOR_BGR2BGRA);
+        cv::cvtColor(simg, dimg, cv::COLOR_BGR2RGBA);
     }
     else if (simg.channels() == 1) {
-        cv::cvtColor(simg, dimg, cv::COLOR_GRAY2BGRA);
+        cv::cvtColor(simg, dimg, cv::COLOR_GRAY2RGBA);
     }
     else {
 //        dimg = simg.clone();
@@ -224,22 +235,48 @@ static std::vector<float> image_embedding(AILIANetwork *image_enc)
         PRINT_ERR("\'%s\' image not found\n", image_path.c_str());
         return features;
     }
+    
+    // simg is bgr, img is rgba
     cv::Mat img;
     preprocess_image(simg, img);
 
     // rgb order, (/255 - mean )/std
-    std::vector<float> input_img(IMAGE_WIDTH * IMAGE_WIDTH * 3);
+    std::vector<float> input_img(IMAGE_WIDTH * IMAGE_HEIGHT * 3);
     float mean[3] = {0.48145466, 0.4578275, 0.40821073};
     float stdf[3] = {0.26862954, 0.26130258, 0.27577711};
-    for (int y = 0; y < IMAGE_WIDTH; y++){
+    float ratio_w = 1.0f * img.cols / IMAGE_WIDTH;
+    float ratio_h = 1.0f * img.rows / IMAGE_HEIGHT;
+    float ratio = std::min(ratio_w, ratio_h);
+    PRINT_OUT("input %dx%d output %dx%d ratio %fx%f\n", img.cols, img.rows, (int)(IMAGE_WIDTH * ratio), (int)(IMAGE_HEIGHT * ratio), ratio_w, ratio_h);
+    std::vector<unsigned char> preview(IMAGE_HEIGHT * IMAGE_WIDTH * 4);
+    for (int y = 0; y < IMAGE_HEIGHT; y++){
         for (int x = 0; x < IMAGE_WIDTH; x++){
-            int y2 = img.rows * y / IMAGE_WIDTH;
-            int x2 = img.cols * x / IMAGE_WIDTH;
-            input_img[0 * IMAGE_WIDTH * IMAGE_WIDTH + y * IMAGE_WIDTH + x] = (img.data[(img.cols * y2 + x2)*4 + 0] / 255.0f - mean[0])/stdf[0];
-            input_img[1 * IMAGE_WIDTH * IMAGE_WIDTH + y * IMAGE_WIDTH + x] = (img.data[(img.cols * y2 + x2)*4 + 1] / 255.0f - mean[1])/stdf[1];
-            input_img[2 * IMAGE_WIDTH * IMAGE_WIDTH + y * IMAGE_WIDTH + x] = (img.data[(img.cols * y2 + x2)*4 + 2] / 255.0f - mean[2])/stdf[2];
+            int y2 = y * ratio + (img.rows - IMAGE_HEIGHT * ratio)/2;
+            int x2 = x * ratio + (img.cols - IMAGE_WIDTH * ratio)/2;
+            if (x2 < img.cols && y2 < img.rows){
+                input_img[0 * IMAGE_WIDTH * IMAGE_HEIGHT + y * IMAGE_WIDTH + x] = (img.data[(img.cols * y2 + x2)*4 + 0] / 255.0f - mean[0])/stdf[0];
+                input_img[1 * IMAGE_WIDTH * IMAGE_HEIGHT + y * IMAGE_WIDTH + x] = (img.data[(img.cols * y2 + x2)*4 + 1] / 255.0f - mean[1])/stdf[1];
+                input_img[2 * IMAGE_WIDTH * IMAGE_HEIGHT + y * IMAGE_WIDTH + x] = (img.data[(img.cols * y2 + x2)*4 + 2] / 255.0f - mean[2])/stdf[2];
+            }else{
+                input_img[0 * IMAGE_WIDTH * IMAGE_HEIGHT + y * IMAGE_WIDTH + x] = 0.0f;
+                input_img[1 * IMAGE_WIDTH * IMAGE_HEIGHT + y * IMAGE_WIDTH + x] = 0.0f;
+                input_img[2 * IMAGE_WIDTH * IMAGE_HEIGHT + y * IMAGE_WIDTH + x] = 0.0f;
+            }
+            for (int i = 0; i < 3; i++){
+                int v = (input_img[i * IMAGE_WIDTH * IMAGE_HEIGHT + y * IMAGE_WIDTH + x] * stdf[i] + mean[i])*255;
+                preview[(y*IMAGE_WIDTH + x)*4 + i] = std::max(0, std::min(255, v));
+            }
         }
     }
+
+    //src_vec.assign(image.datastart, image.dataend);
+    cv::Mat dest(IMAGE_HEIGHT, IMAGE_WIDTH, img.type());
+    dest.data = preview.data();
+    cv::imwrite("temp1.jpg", dest);
+
+    cv::Mat dest2(img.rows, img.cols, img.type());
+    dest2.data = img.data;
+    cv::imwrite("temp2.jpg", dest2);
 
     // inference
     int status;
@@ -257,6 +294,10 @@ static std::vector<float> image_embedding(AILIANetwork *image_enc)
     sequence_shape.z=3;
     sequence_shape.w=1;
     sequence_shape.dim=4;
+    
+    PRINT_OUT("features %d\n", features.size());
+    PRINT_OUT("input_img %d %d\n", input_img.size(), sequence_shape.x * sequence_shape.y * sequence_shape.z * sequence_shape.w);
+    fflush(stdout);
 
     status = ailiaSetInputBlobShape(image_enc,&sequence_shape,input_blob_idx,AILIA_SHAPE_VERSION);
     if(status!=AILIA_STATUS_SUCCESS){
@@ -297,7 +338,7 @@ std::vector<int> tokenize(AILIATokenizer * tokenizer, std::string text){
 		printf("%d ", pad_tokens[i]);
 	}
 	printf("\n");
-    return tokens;
+    return pad_tokens;
 }
 
 std::vector<float> text_embedding(AILIANetwork *ailia_text, std::vector<int> &tokens){
@@ -323,11 +364,16 @@ std::vector<float> text_embedding(AILIANetwork *ailia_text, std::vector<int> &to
         return features;
     }
 
+    if (tokens.size() != 77){
+        PRINT_ERR("Invalid token size %d\n", tokens.size());
+        return features;
+    }
+
     std::vector<float> tokens_float(77);
     for (int i = 0; i < 77; i++){
         tokens_float[i] = (float)tokens[i];
     }
-    status = ailiaPredict(ailia_text, &features[0], features.size() * sizeof(float), &tokens_float[0], tokens_float.size() * sizeof(int));
+    status = ailiaPredict(ailia_text, &features[0], features.size() * sizeof(float), &tokens_float[0], tokens_float.size() * sizeof(float));
     if (status != AILIA_STATUS_SUCCESS){
         PRINT_ERR("TextEmbedding ailiaGetErrorDetail %s\n", ailiaGetErrorDetail(ailia_text));
         return features;
@@ -342,9 +388,42 @@ int main(int argc, char **argv)
         return -1;
     }
 
+	// env list
+	unsigned int env_count;
+	status = ailiaGetEnvironmentCount(&env_count);
+	if (status != AILIA_STATUS_SUCCESS) {
+		PRINT_ERR("ailiaGetEnvironmentCount Failed %d", status);
+		return -1;
+	}
+
+	int env_id = AILIA_ENVIRONMENT_ID_AUTO;
+	for (unsigned int i = 0; i < env_count; i++) {
+		AILIAEnvironment* env;
+		status = ailiaGetEnvironment(&env, i, AILIA_ENVIRONMENT_VERSION);
+		bool is_fp16 = (env->props & AILIA_ENVIRONMENT_PROPERTY_FP16) != 0;
+		PRINT_OUT("env_id : %d type : %d name : %s", env->id, env->type, env->name);
+		/*
+        if (is_fp16){
+			PRINT_OUT(" (Warning : FP16 backend is not worked this model)\n");
+			continue;
+		}
+        */
+		PRINT_OUT("\n");
+		if (args_env_id == env->id){
+			env_id = env->id;
+		}
+		if (args_env_id == -1 && env_id == AILIA_ENVIRONMENT_ID_AUTO){
+			if (env->type == AILIA_ENVIRONMENT_TYPE_GPU) {
+				env_id = env->id;
+			}
+		}
+	}
+	if (args_env_id == -1){
+		PRINT_OUT("you can select environment using -e option\n");
+	}
+
     // net initialize
     AILIANetwork *ailia_image;
-    int env_id = AILIA_ENVIRONMENT_ID_AUTO;
     status = ailiaCreate(&ailia_image, env_id, AILIA_MULTITHREAD_AUTO);
     if (status != AILIA_STATUS_SUCCESS) {
         PRINT_ERR("ailiaCreate failed %d\n", status);
@@ -384,7 +463,6 @@ int main(int argc, char **argv)
         ailiaDestroy(ailia_text);
         return -1;
     }
-    PRINT_OUT("env_name: %s\n", env_ptr->name);
     status = ailiaOpenStreamFile(ailia_text, model_text.c_str());
     if (status != AILIA_STATUS_SUCCESS) {
         PRINT_ERR("ailiaOpenStreamFile failed %d\n", status);
@@ -402,13 +480,14 @@ int main(int argc, char **argv)
     // Tokenize
     texts.push_back(std::string("a dog"));
     texts.push_back(std::string("a cat"));
+    texts.push_back(std::string("a human"));
 
     std::vector<std::vector<int>> tokens;
 
 	AILIATokenizer *tokenizer;
 	status = ailiaTokenizerCreate(&tokenizer, AILIA_TOKENIZER_TYPE_CLIP, AILIA_TOKENIZER_FLAG_NONE);
 	if (status != 0){
-		printf("ailiaTokenizerCreate error %d\n", status);
+		PRINT_ERR("ailiaTokenizerCreate error %d\n", status);
 		return -1;
 	}
     for (int i = 0; i < texts.size(); i++){
@@ -418,6 +497,7 @@ int main(int argc, char **argv)
 	ailiaTokenizerDestroy(tokenizer);
 
     // text embedding
+    PRINT_OUT("Text embedding\n");
     std::vector< std::vector<float> > text_features;
     for (int i = 0; i < texts.size(); i++){
         std::vector<float> features = text_embedding(ailia_text, tokens[i]);
@@ -425,10 +505,21 @@ int main(int argc, char **argv)
     }
 
     // image embedding
+    PRINT_OUT("Image embedding\n");
     std::vector<float> image_features = image_embedding(ailia_image);
 
     // distance
+    std::vector<float> confs;
+    for (int i = 0; i < texts.size(); i++){
+        float sim = cos_similarity(image_features, text_features[i]) * 100;
+        confs.push_back(sim);
+    }
 
+    softmax(&confs[0], confs.size());
+
+    for (int i = 0; i < texts.size(); i++){
+        printf("%s %f\n", texts[i].c_str(), confs[i]);
+    }
 
     ailiaDestroy(ailia_image);
     ailiaDestroy(ailia_text);
