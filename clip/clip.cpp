@@ -49,8 +49,7 @@
 #define IMAGE_HEIGHT 224 // for video mode
 
 #define CONTEXT_LENGTH 77
-
-#define SLEEP_TIME      3
+#define FEATURE_LENGTH 512
 
 #if defined(_WIN32) || defined(_WIN64)
 #define PRINT_OUT(...) fprintf_s(stdout, __VA_ARGS__)
@@ -275,7 +274,7 @@ std::vector<float> resize_and_center_crop(cv::Mat img){
 
 static std::vector<float> image_embedding(AILIANetwork *image_enc, std::string path)
 {
-    std::vector<float> features(512);
+    std::vector<float> features(FEATURE_LENGTH);
 
     // prepare input data
     cv::Mat simg = cv::imread(path.c_str(), cv::IMREAD_UNCHANGED);
@@ -300,7 +299,7 @@ static std::vector<float> image_embedding(AILIANetwork *image_enc, std::string p
 
     AILIAShape sequence_shape;
     sequence_shape.x=IMAGE_WIDTH;
-    sequence_shape.y=IMAGE_WIDTH;
+    sequence_shape.y=IMAGE_HEIGHT;
     sequence_shape.z=3;
     sequence_shape.w=1;
     sequence_shape.dim=4;
@@ -355,7 +354,7 @@ std::vector<int> tokenize(AILIATokenizer * tokenizer, std::string text){
 }
 
 std::vector<float> text_embedding(AILIANetwork *ailia_text, std::vector<int> &tokens){
-    std::vector<float> features(512);
+    std::vector<float> features(FEATURE_LENGTH);
 
     unsigned int input_blob_idx = 0;
     int status = ailiaGetBlobIndexByInputIndex(ailia_text, &input_blob_idx, 0);
@@ -378,7 +377,7 @@ std::vector<float> text_embedding(AILIANetwork *ailia_text, std::vector<int> &to
     }
 
     if (tokens.size() != CONTEXT_LENGTH){
-        PRINT_ERR("Invalid token size %d\n", tokens.size());
+        PRINT_ERR("Invalid token size %lu\n", tokens.size());
         return features;
     }
 
@@ -430,6 +429,50 @@ int get_env_id(void)
     return env_id;
 }
 
+int initialize_image_encoder(AILIANetwork **ailia_image, int env_id){
+    int status = ailiaCreate(ailia_image, env_id, AILIA_MULTITHREAD_AUTO);
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("ailiaCreate failed %d\n", status);
+        return -1;
+    }
+    status = ailiaOpenStreamFile(*ailia_image, model_image.c_str());
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("ailiaOpenStreamFile failed %d\n", status);
+        PRINT_ERR("ailiaGetErrorDetail %s\n", ailiaGetErrorDetail(*ailia_image));
+        ailiaDestroy(*ailia_image);
+        return -1;
+    }
+    status = ailiaOpenWeightFile(*ailia_image, weight_image.c_str());
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("ailiaOpenWeightFile failed %d\n", status);
+        ailiaDestroy(*ailia_image);
+        return -1;
+    }
+    return AILIA_STATUS_SUCCESS;
+}
+
+int initialize_text_encoder(AILIANetwork **ailia_text, int env_id){
+    int status = ailiaCreate(ailia_text, env_id, AILIA_MULTITHREAD_AUTO);
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("ailiaCreate failed %d\n", status);
+        return -1;
+    }
+    status = ailiaOpenStreamFile(*ailia_text, model_text.c_str());
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("ailiaOpenStreamFile failed %d\n", status);
+        PRINT_ERR("ailiaGetErrorDetail %s\n", ailiaGetErrorDetail(*ailia_text));
+        ailiaDestroy(*ailia_text);
+        return -1;
+    }
+    status = ailiaOpenWeightFile(*ailia_text, weight_text.c_str());
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("ailiaOpenWeightFile failed %d\n", status);
+        ailiaDestroy(*ailia_text);
+        return -1;
+    }
+    return AILIA_STATUS_SUCCESS;
+}
+
 int main(int argc, char **argv)
 {
     int status = argument_parser(argc, argv);
@@ -442,68 +485,24 @@ int main(int argc, char **argv)
 
     // net initialize
     AILIANetwork *ailia_image;
-    status = ailiaCreate(&ailia_image, env_id, AILIA_MULTITHREAD_AUTO);
+    status = initialize_image_encoder(&ailia_image, env_id);
     if (status != AILIA_STATUS_SUCCESS) {
-        PRINT_ERR("ailiaCreate failed %d\n", status);
-        return -1;
-    }
-    AILIAEnvironment *env_ptr = nullptr;
-    status = ailiaGetSelectedEnvironment(ailia_image, &env_ptr, AILIA_ENVIRONMENT_VERSION);
-    if (status != AILIA_STATUS_SUCCESS) {
-        PRINT_ERR("ailiaGetSelectedEnvironment failed %d\n", status);
-        ailiaDestroy(ailia_image);
-        return -1;
-    }
-    PRINT_OUT("env_name: %s\n", env_ptr->name);
-    status = ailiaOpenStreamFile(ailia_image, model_image.c_str());
-    if (status != AILIA_STATUS_SUCCESS) {
-        PRINT_ERR("ailiaOpenStreamFile failed %d\n", status);
-        PRINT_ERR("ailiaGetErrorDetail %s\n", ailiaGetErrorDetail(ailia_image));
-        ailiaDestroy(ailia_image);
-        return -1;
-    }
-    status = ailiaOpenWeightFile(ailia_image, weight_image.c_str());
-    if (status != AILIA_STATUS_SUCCESS) {
-        PRINT_ERR("ailiaOpenWeightFile failed %d\n", status);
-        ailiaDestroy(ailia_image);
         return -1;
     }
 
     AILIANetwork *ailia_text;
-    status = ailiaCreate(&ailia_text, env_id, AILIA_MULTITHREAD_AUTO);
+    status = initialize_text_encoder(&ailia_text, env_id);
     if (status != AILIA_STATUS_SUCCESS) {
-        PRINT_ERR("ailiaCreate failed %d\n", status);
-        return -1;
-    }
-    status = ailiaGetSelectedEnvironment(ailia_text, &env_ptr, AILIA_ENVIRONMENT_VERSION);
-    if (status != AILIA_STATUS_SUCCESS) {
-        PRINT_ERR("ailiaGetSelectedEnvironment failed %d\n", status);
-        ailiaDestroy(ailia_text);
-        return -1;
-    }
-    status = ailiaOpenStreamFile(ailia_text, model_text.c_str());
-    if (status != AILIA_STATUS_SUCCESS) {
-        PRINT_ERR("ailiaOpenStreamFile failed %d\n", status);
-        PRINT_ERR("ailiaGetErrorDetail %s\n", ailiaGetErrorDetail(ailia_text));
-        ailiaDestroy(ailia_text);
-        return -1;
-    }
-    status = ailiaOpenWeightFile(ailia_text, weight_text.c_str());
-    if (status != AILIA_STATUS_SUCCESS) {
-        PRINT_ERR("ailiaOpenWeightFile failed %d\n", status);
-        ailiaDestroy(ailia_text);
         return -1;
     }
 
     // Tokenize
+    std::vector<std::vector<int>> tokens;
     if (texts.size() == 0){
         texts.push_back(std::string("a dog"));
         texts.push_back(std::string("a cat"));
         texts.push_back(std::string("a human"));
     }
-
-    std::vector<std::vector<int>> tokens;
-
 	AILIATokenizer *tokenizer;
 	status = ailiaTokenizerCreate(&tokenizer, AILIA_TOKENIZER_TYPE_CLIP, AILIA_TOKENIZER_FLAG_NONE);
 	if (status != 0){
@@ -543,6 +542,7 @@ int main(int argc, char **argv)
         printf("Label %s Confidence %f\n", texts[i].c_str(), confs[i]);
     }
 
+    // release instance
     ailiaDestroy(ailia_image);
     ailiaDestroy(ailia_text);
 
