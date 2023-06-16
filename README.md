@@ -151,3 +151,12 @@ make
 ```
 ./fugumt.sh
 ```
+
+# Build all samples
+
+```
+export AILIA_LIBRARY_PATH=../ailia/library
+export AILIA_TOKENIZER_PATH=../ailia_tokenizer/library
+cmake .
+make
+```
