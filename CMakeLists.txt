@@ -14,6 +14,7 @@ set(CMAKE_CXX_STANDARD 17)
 
 add_subdirectory(arcface)
 add_subdirectory(bert_maskedlm)
+add_subdirectory(clip)
 add_subdirectory(face_alignment)
 add_subdirectory(fugumt)
 add_subdirectory(lightweight-human-pose-estimation)

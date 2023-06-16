@@ -78,6 +78,7 @@ We are now converting to C++. Please wait to complete conversion.
 | Name | Detail | Exported From | Supported Ailia Version |
 |:-----------|------------:|:------------:|:------------:|
 | [resnet50](/resnet50/) | [Deep Residual Learning for Image Recognition]( https://github.com/KaimingHe/deep-residual-networks) | Chainer | 1.2.0 and later |
+| [clip](/clip/) | [CLIP](https://github.com/openai/CLIP) | Pytorch | 1.2.9 and later |
 
 ## Image segmentation
 
