@@ -40,9 +40,8 @@ bool debug = false;
 
 #define BENCHMARK_ITERS 5
 
-#define NUM_INPUTS 2
-#define NUM_OUTPUTS 2
-#define NUM_STATE 768
+#define NUM_INPUTS 4
+#define NUM_OUTPUTS 3
 
 static std::string weight(WEIGHT_PATH);
 static std::string model(MODEL_PATH);
@@ -146,16 +145,6 @@ static int argument_parser(int argc, char **argv)
 // Main functions
 // ======================
 
-void softmax(float *data, int n){
-	float sum=0;
-	for(int i=0;i<n;i++){
-		sum+=exp(data[i]);
-	}
-	for(int i=0;i<n;i++){
-		data[i]=exp(data[i])/sum;
-	}
-}
-
 void setErrorDetail(const char *func, const char *detail){
 	PRINT_ERR("Error %s Detail %s\n", func, detail);
 }
@@ -173,12 +162,27 @@ int forward(AILIANetwork *ailia, std::vector<float> *inputs[NUM_INPUTS], std::ve
 
 		AILIAShape sequence_shape;
 		int batch_size = 1;
-		sequence_shape.x=inputs[i]->size();
-		sequence_shape.y=batch_size;
-		sequence_shape.z=1;
-		sequence_shape.w=1;
-		sequence_shape.dim=2;
-
+		if ( i == 0 ){
+			sequence_shape.x=inputs[i]->size() / batch_size;
+			sequence_shape.y=batch_size;
+			sequence_shape.z=1;
+			sequence_shape.w=1;
+			sequence_shape.dim=2;
+		}
+		if ( i == 1 ){
+			sequence_shape.x=inputs[i]->size();
+			sequence_shape.y=1;
+			sequence_shape.z=1;
+			sequence_shape.w=1;
+			sequence_shape.dim=1;
+		}
+		if ( i == 2 || i == 3){
+			sequence_shape.x=inputs[i]->size() / batch_size / 2;
+			sequence_shape.y=batch_size;
+			sequence_shape.z=2;
+			sequence_shape.w=1;
+			sequence_shape.dim=3;
+		}
 		if (debug){
 			printf("input blob shape %d %d %d %d dims %d\n",sequence_shape.x,sequence_shape.y,sequence_shape.z,sequence_shape.w,sequence_shape.dim);
 		}
@@ -235,64 +239,59 @@ int forward(AILIANetwork *ailia, std::vector<float> *inputs[NUM_INPUTS], std::ve
 	return AILIA_STATUS_SUCCESS;
 }
 
-std::vector<float> mean_pool(std::vector<float> &features){
-	std::vector<float> mean(NUM_STATE);
-	for (int j = 0; j < NUM_STATE; j++){
-		float sum = 0;
-		int num_sentence = features.size() / NUM_STATE;
-		for (int i = 0; i < num_sentence; i++){
-			sum += features[i * NUM_STATE + j];
-		}
-		sum /= num_sentence;
-		mean[j] = sum;
-	}
-	return mean;
-}
-
 std::vector<float> calc_vad(AILIANetwork* net, std::vector<float> wave, int sampleRate, int nChannels, int nSamples)
 {
-	/*
-	std::vector<int> tokens = encode(text, tokenizer);
+	int batch = 1;
+	int sequence = 1536;
 
-	std::vector<float> input_ids(tokens.size());
-	std::vector<float> attention_mask(tokens.size());
+	std::vector<float> input(batch * sequence);
+	std::vector<float> sr(1);
+	std::vector<float> h(2 * batch * 64);
+	std::vector<float> c(2 * batch * 64);
 
-	if (prompt && debug){
+	if (debug){
 		PRINT_OUT("Input Tokens :\n");
 	}
-	for (int i = 0; i < tokens.size(); i++){
-		input_ids[i] = (float)tokens[i];
-		attention_mask[i] = 1;
-		if (prompt && debug){
-			PRINT_OUT("%d ", (int)input_ids[i]);
+
+	std::vector<float> conf;
+
+	for (int s = 0; s < nSamples; s+=sequence){
+		for (int i = 0; i < input.size(); i++){
+			if (s + i < nSamples){
+				input[i] = wave[s + i];
+			}else{
+				input[i] = 0;
+			}
 		}
+		sr[0] = sampleRate;
+		if (debug){
+			PRINT_OUT("\n");
+		}
+
+		std::vector<float> *inputs[NUM_INPUTS];
+		inputs[0] = &input;
+		inputs[1] = &sr;
+		inputs[2] = &h;
+		inputs[3] = &c;
+
+		std::vector<float> output(batch);
+		//std::vector<float> hn(2 * batch * 64);
+		//std::vector<float> cn(2 * batch * 64);
+		
+		std::vector<float> *outputs[NUM_OUTPUTS];
+		outputs[0] = &output;
+		outputs[1] = &h;
+		outputs[2] = &c;
+
+		forward(net, inputs, outputs);
+
+		if ( s / sequence < 10){
+			PRINT_OUT("%f ", output[0]);
+		}
+		conf.push_back(output[0]);
 	}
-	if (prompt && debug){
-		PRINT_OUT("\n");
-	}
 
-	std::vector<float> *inputs[NUM_INPUTS];
-	inputs[0] = &input_ids;
-	inputs[1] = &attention_mask;
-
-	std::vector<float> features(tokens.size() * NUM_STATE);
-	std::vector<float> temp(NUM_STATE);
-
-	std::vector<float> *outputs[NUM_OUTPUTS];
-	outputs[0] = &features;
-	outputs[1] = &temp;
-	*/
-
-	std::vector<float> pool_features;
-	/*
-	int status = forward(net, inputs, outputs);
-	if (status != AILIA_STATUS_SUCCESS){
-		return pool_features;
-	}
-
-	pool_features = mean_pool(features);
-	*/
-	return pool_features;
+	return conf;
 }
 
 float norm(std::vector<float> & vec1){
@@ -310,7 +309,12 @@ static int recognize_from_audio(AILIANetwork* net)
 
 	int sampleRate, nChannels, nSamples;
 	std::vector<float> wave = read_wave_file("en_example.wav", &sampleRate, &nChannels, &nSamples);
-	
+
+	if (sampleRate != 16000){
+		PRINT_OUT("sampleRate must be 16000 (actual %d)\n", sampleRate);
+		return AILIA_STATUS_INVALID_ARGUMENT;
+	}
+
 	calc_vad(net, wave, sampleRate, nChannels, nSamples);
 
 	PRINT_OUT("Program finished successfully.\n");
