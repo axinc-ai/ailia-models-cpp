@@ -249,10 +249,6 @@ std::vector<float> calc_vad(AILIANetwork* net, std::vector<float> wave, int samp
 	std::vector<float> h(2 * batch * 64);
 	std::vector<float> c(2 * batch * 64);
 
-	if (debug){
-		PRINT_OUT("Input Tokens :\n");
-	}
-
 	std::vector<float> conf;
 
 	for (int s = 0; s < nSamples; s+=sequence){
@@ -275,8 +271,6 @@ std::vector<float> calc_vad(AILIANetwork* net, std::vector<float> wave, int samp
 		inputs[3] = &c;
 
 		std::vector<float> output(batch);
-		//std::vector<float> hn(2 * batch * 64);
-		//std::vector<float> cn(2 * batch * 64);
 		
 		std::vector<float> *outputs[NUM_OUTPUTS];
 		outputs[0] = &output;
@@ -285,22 +279,10 @@ std::vector<float> calc_vad(AILIANetwork* net, std::vector<float> wave, int samp
 
 		forward(net, inputs, outputs);
 
-		if ( s / sequence < 10){
-			PRINT_OUT("%f ", output[0]);
-		}
 		conf.push_back(output[0]);
 	}
 
 	return conf;
-}
-
-float norm(std::vector<float> & vec1){
-	float norm1 = 0;
-	for (int i = 0; i < vec1.size(); i++){
-		norm1 += vec1[i] * vec1[i];
-	}
-	norm1 = sqrt(norm1);
-	return norm1;
 }
 
 static int recognize_from_audio(AILIANetwork* net)
@@ -315,7 +297,15 @@ static int recognize_from_audio(AILIANetwork* net)
 		return AILIA_STATUS_INVALID_ARGUMENT;
 	}
 
-	calc_vad(net, wave, sampleRate, nChannels, nSamples);
+	std::vector<float> conf = calc_vad(net, wave, sampleRate, nChannels, nSamples);
+
+	PRINT_OUT("Confidence :\n");
+	for (int i = 0; i < conf.size(); i++){
+		if (i < 10){
+			PRINT_OUT("%f sec %f\n", i * sampleRate / 1536.0f, conf[i]);
+		}
+	}
+	PRINT_OUT("\n");
 
 	PRINT_OUT("Program finished successfully.\n");
 
