@@ -290,10 +290,19 @@ static int recognize_from_audio(AILIANetwork* net)
 	int status = AILIA_STATUS_SUCCESS;
 
 	int sampleRate, nChannels, nSamples;
-	std::vector<float> wave = read_wave_file("en_example.wav", &sampleRate, &nChannels, &nSamples);
+	std::vector<float> wave = read_wave_file(input_text.c_str(), &sampleRate, &nChannels, &nSamples);
+	if (wave.size() == 0){
+		PRINT_ERR("Input file not found (%s)\n", input_text.c_str());
+		return AILIA_STATUS_ERROR_FILE_API;
+	}
 
 	if (sampleRate != 16000){
 		PRINT_OUT("sampleRate must be 16000 (actual %d)\n", sampleRate);
+		return AILIA_STATUS_INVALID_ARGUMENT;
+	}
+
+	if (nChannels != 1){
+		PRINT_OUT("nChannels must be 1 (actual %d)\n", nChannels);
 		return AILIA_STATUS_INVALID_ARGUMENT;
 	}
 
