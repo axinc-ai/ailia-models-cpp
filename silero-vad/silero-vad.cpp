@@ -49,7 +49,7 @@ static std::string model(MODEL_PATH);
 static bool benchmark  = false;
 static int args_env_id = -1;
 
-std::string input_text = "ex_example.wav";
+std::string input_text = "en_example.wav";
 
 
 // ======================
