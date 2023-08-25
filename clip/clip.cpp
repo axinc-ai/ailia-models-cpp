@@ -531,15 +531,17 @@ int main(int argc, char **argv)
     // distance
     PRINT_OUT("Similarity...\n");
     std::vector<float> confs;
+    std::vector<float> sims;
     for (int i = 0; i < texts.size(); i++){
-        float sim = cos_similarity(image_features, text_features[i]) * 100;
-        confs.push_back(sim);
+        float sim = cos_similarity(image_features, text_features[i]);
+        confs.push_back(sim * 100);
+        sims.push_back(sim);
     }
 
     softmax(&confs[0], confs.size());
 
     for (int i = 0; i < texts.size(); i++){
-        printf("Label %s Confidence %f\n", texts[i].c_str(), confs[i]);
+        printf("Label %s Confidence %f Similarity %f\n", texts[i].c_str(), confs[i], sims[i]);
     }
 
     // release instance
