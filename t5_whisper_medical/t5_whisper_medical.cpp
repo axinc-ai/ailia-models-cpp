@@ -387,18 +387,12 @@ int forward_decoder(AILIANetwork *ailia, std::vector<float> *inputs[NUM_INPUTS_D
 	return AILIA_STATUS_SUCCESS;
 }
 
-static std::string normalize_neologd(std::string text){
-	// neologd変換は後で考える
-	printf("Warning : We need to implement normalize_neologd function with NFKC conversion.");
-	return text;
-}
 
 static int recognize_from_text(AILIANetwork* encoder, AILIANetwork* decoder, struct AILIATokenizer *tokenizer_source)
 {
 	int status = AILIA_STATUS_SUCCESS;
 
 	input_text = std::string("医療用語の訂正: ") + input_text; // Add Header of model
-	input_text = normalize_neologd(input_text);
 
 	PRINT_OUT("Input : %s\n", input_text.c_str());
 
