@@ -20,7 +20,7 @@
 #include "ailia.h"
 #include "ailia_tokenizer.h"
 
-bool debug = false;
+bool debug = true;
 
 
 // ======================
@@ -47,7 +47,7 @@ bool debug = false;
 #define NUM_OUTPUTS_ENCODER 1
 
 #define NUM_INPUTS_DECODER 2
-#define NUM_OUTPUTS_DECODER 2
+#define NUM_OUTPUTS_DECODER 1
 
 static std::string weight_encoder(ENCODER_WEIGHT_PATH);
 static std::string model_encoder(ENCODER_MODEL_PATH);
@@ -310,11 +310,22 @@ int forward_decoder(AILIANetwork *ailia, std::vector<float> *inputs[NUM_INPUTS_D
 
 		AILIAShape sequence_shape;
 		int batch_size = 1;
-		sequence_shape.x=inputs[i]->size();
-		sequence_shape.y=batch_size;
-		sequence_shape.z=1;
-		sequence_shape.w=1;
-		sequence_shape.dim=2;
+		if (i == 0){
+			// tokens
+			sequence_shape.x=inputs[i]->size();
+			sequence_shape.y=batch_size;
+			sequence_shape.z=1;
+			sequence_shape.w=1;
+			sequence_shape.dim=2;
+		}
+		if (i == 1){
+			// embeddings
+			sequence_shape.x=768;
+			sequence_shape.y=inputs[i]->size() / 768;
+			sequence_shape.z=batch_size;
+			sequence_shape.w=1;
+			sequence_shape.dim=3;
+		}
 
 		if (debug){
 			printf("input blob shape %d %d %d %d dims %d\n",sequence_shape.x,sequence_shape.y,sequence_shape.z,sequence_shape.w,sequence_shape.dim);
@@ -399,9 +410,9 @@ static int recognize_from_text(AILIANetwork* encoder, AILIANetwork* decoder, str
 	std::vector<float> *inputs_encoder[NUM_INPUTS_ENCODER];
 	inputs_encoder[0] = &input_ids;
 
-	std::vector<float> output_ids;
+	std::vector<float> encoder_outputs_prompt;
 	std::vector<float> *outputs_encoder[NUM_OUTPUTS_ENCODER];
-	outputs_encoder[0] = &output_ids;
+	outputs_encoder[0] = &encoder_outputs_prompt;
 	status = forward_encoder(encoder, inputs_encoder, outputs_encoder);
 	if (status != AILIA_STATUS_SUCCESS){
 		return status;
@@ -411,15 +422,17 @@ static int recognize_from_text(AILIANetwork* encoder, AILIANetwork* decoder, str
 	std::vector<int> tokens_int;
 	std::vector<float> tokens;
 
-	PRINT_OUT("Encoded Tokens :\n");
-	for (int i = 0; i < output_ids.size(); i++){
-		PRINT_OUT("%d ", (int)output_ids[i]);
+	/*
+	PRINT_OUT("Encoded Tokens (size : %d) :\n", encoder_outputs_prompt.size());
+	for (int i = 0; i < encoder_outputs_prompt.size(); i++){
+		PRINT_OUT("%f ", encoder_outputs_prompt[i]);
 	}
 	PRINT_OUT("\n");
+	*/
 
 	std::vector<float> *inputs[NUM_INPUTS_DECODER];
 	inputs[0] = &tokens;
-	inputs[1] = &output_ids;
+	inputs[1] = &encoder_outputs_prompt;
 
 	std::vector<float> logits;
 
@@ -429,9 +442,13 @@ static int recognize_from_text(AILIANetwork* encoder, AILIANetwork* decoder, str
 	tokens.clear();
 	tokens_int.clear();
 
+	tokens.push_back(0);
+	tokens_int.push_back(0);
+
 	while(true){
 		if (debug){
 			std::string text = decode(tokens_int, tokenizer_source);
+			printf("---\n");
 			printf("Loop %d %s\n", (int)tokens.size(), text.c_str());
 		}
 
@@ -440,9 +457,9 @@ static int recognize_from_text(AILIANetwork* encoder, AILIANetwork* decoder, str
 			return status;
 		}
 
-		int eos_token_id = 0;
+		int eos_token_id = 1;
 
-		log_softmax(&logits[0], logits.size());
+		log_softmax(&logits[0], logits.size()); // logits is 32128
 
 		float prob = -INFINITY;
 		int arg_max = 0;
