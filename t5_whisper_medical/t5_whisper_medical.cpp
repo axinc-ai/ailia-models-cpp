@@ -49,6 +49,10 @@ bool debug = false;
 #define NUM_INPUTS_DECODER 2
 #define NUM_OUTPUTS_DECODER 1
 
+#define LOGITS_LENGTH 32128
+
+#define EOS_TOKEN_ID 1
+
 static std::string weight_encoder(ENCODER_WEIGHT_PATH);
 static std::string model_encoder(ENCODER_MODEL_PATH);
 
@@ -67,7 +71,7 @@ std::string input_text = "こんにちは、先生。最近手足の経連があ
 
 static void print_usage()
 {
-	PRINT_OUT("usage: fugumt [-h] [-i TEXT] [-b] [-e ENV_ID]\n");
+	PRINT_OUT("usage: t5_whisper_medium [-h] [-i TEXT] [-b] [-e ENV_ID]\n");
 	return;
 }
 
@@ -383,16 +387,20 @@ int forward_decoder(AILIANetwork *ailia, std::vector<float> *inputs[NUM_INPUTS_D
 	return AILIA_STATUS_SUCCESS;
 }
 
+static std::string normalize_neologd(std::string text){
+	// neologd変換は後で考える
+	printf("Warning : We need to implement normalize_neologd function with NFKC conversion.");
+	return text;
+}
+
 static int recognize_from_text(AILIANetwork* encoder, AILIANetwork* decoder, struct AILIATokenizer *tokenizer_source)
 {
 	int status = AILIA_STATUS_SUCCESS;
-	int pad_token_id = 32000;
 
-	input_text = std::string("医療用語の訂正: ") + input_text;
+	input_text = std::string("医療用語の訂正: ") + input_text; // Add Header of model
+	input_text = normalize_neologd(input_text);
 
 	PRINT_OUT("Input : %s\n", input_text.c_str());
-
-	// neologd変換は後で考える
 
 	std::vector<int> input_text_tokens = encode(input_text, tokenizer_source);
 
@@ -457,9 +465,6 @@ static int recognize_from_text(AILIANetwork* encoder, AILIANetwork* decoder, str
 			return status;
 		}
 
-		int eos_token_id = 1;
-
-		const int LOGITS_LENGTH = 32128;
 		int offset = logits.size() - LOGITS_LENGTH;
 
 		float logits_current[LOGITS_LENGTH];
@@ -480,7 +485,7 @@ static int recognize_from_text(AILIANetwork* encoder, AILIANetwork* decoder, str
 			PRINT_OUT("Token %d (%f)\n", arg_max, prob);
 		}
 
-		if (arg_max == eos_token_id){
+		if (arg_max == EOS_TOKEN_ID){
 			break;
 		}
 
