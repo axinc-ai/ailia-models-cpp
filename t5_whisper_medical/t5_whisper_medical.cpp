@@ -43,9 +43,11 @@ bool debug = false;
 
 #define BENCHMARK_ITERS 5
 
-#define NUM_INPUTS 27
-#define NUM_OUTPUTS 25
-#define NUM_PAST_KEY 24
+#define NUM_INPUTS_ENCODER 1
+#define NUM_OUTPUTS_ENCODER 1
+
+#define NUM_INPUTS_DECODER 2
+#define NUM_OUTPUTS_DECODER 2
 
 static std::string weight_encoder(ENCODER_WEIGHT_PATH);
 static std::string model_encoder(ENCODER_MODEL_PATH);
@@ -56,7 +58,7 @@ static std::string model_decoder(DECODER_MODEL_PATH);
 static bool benchmark  = false;
 static int args_env_id = -1;
 
-std::string input_text = "This is a cat.";
+std::string input_text = "こんにちは、先生。最近手足の経連があります。";
 
 
 // ======================
@@ -220,10 +222,10 @@ std::string decode(std::vector<int> &tokens, struct AILIATokenizer *tokenizer){
 	return std::string(p_text);
 }
 
-int forward(AILIANetwork *ailia, std::vector<float> *inputs[NUM_INPUTS], std::vector<float> *outputs[NUM_OUTPUTS]){
+int forward_encoder(AILIANetwork *ailia, std::vector<float> *inputs[NUM_INPUTS_ENCODER], std::vector<float> *outputs[NUM_OUTPUTS_ENCODER]){
 	int status;
 
-	for (int i = 0; i < NUM_INPUTS; i++){
+	for (int i = 0; i < NUM_INPUTS_ENCODER; i++){
 		unsigned int input_blob_idx = 0;
 		status = ailiaGetBlobIndexByInputIndex(ailia, &input_blob_idx, i);
 		if (status != AILIA_STATUS_SUCCESS) {
@@ -233,27 +235,11 @@ int forward(AILIANetwork *ailia, std::vector<float> *inputs[NUM_INPUTS], std::ve
 
 		AILIAShape sequence_shape;
 		int batch_size = 1;
-		if (i == 0 || i == 1){
-			sequence_shape.x=inputs[i]->size();
-			sequence_shape.y=batch_size;
-			sequence_shape.z=1;
-			sequence_shape.w=1;
-			sequence_shape.dim=2;
-		}else{
-			if (i == 2){
-				sequence_shape.x=1;
-				sequence_shape.y=batch_size;
-				sequence_shape.z=1;
-				sequence_shape.w=1;
-				sequence_shape.dim=2;
-			}else{
-				sequence_shape.x=64;
-				sequence_shape.y=inputs[i]->size()/64/8;
-				sequence_shape.z=8;
-				sequence_shape.w=batch_size;
-				sequence_shape.dim=4;
-			}
-		}
+		sequence_shape.x=inputs[i]->size();
+		sequence_shape.y=batch_size;
+		sequence_shape.z=1;
+		sequence_shape.w=1;
+		sequence_shape.dim=2;
 
 		if (debug){
 			printf("input blob shape %d %d %d %d dims %d\n",sequence_shape.x,sequence_shape.y,sequence_shape.z,sequence_shape.w,sequence_shape.dim);
@@ -280,7 +266,7 @@ int forward(AILIANetwork *ailia, std::vector<float> *inputs[NUM_INPUTS], std::ve
 		return status;
 	}
 
-	for (int i = 0; i < NUM_OUTPUTS; i++){
+	for (int i = 0; i < NUM_OUTPUTS_ENCODER; i++){
 		unsigned int output_blob_idx = 0;
 		status = ailiaGetBlobIndexByOutputIndex(ailia, &output_blob_idx, i);
 		if (status != AILIA_STATUS_SUCCESS) {
@@ -311,64 +297,148 @@ int forward(AILIANetwork *ailia, std::vector<float> *inputs[NUM_INPUTS], std::ve
 	return AILIA_STATUS_SUCCESS;
 }
 
-static int recognize_from_text(AILIANetwork* net, struct AILIATokenizer *tokenizer_source, struct AILIATokenizer *tokenizer_target)
+int forward_decoder(AILIANetwork *ailia, std::vector<float> *inputs[NUM_INPUTS_DECODER], std::vector<float> *outputs[NUM_OUTPUTS_DECODER]){
+	int status;
+
+	for (int i = 0; i < NUM_INPUTS_DECODER; i++){
+		unsigned int input_blob_idx = 0;
+		status = ailiaGetBlobIndexByInputIndex(ailia, &input_blob_idx, i);
+		if (status != AILIA_STATUS_SUCCESS) {
+			setErrorDetail("ailiaGetBlobIndexByInputIndex", ailiaGetErrorDetail(ailia));
+			return status;
+		}
+
+		AILIAShape sequence_shape;
+		int batch_size = 1;
+		sequence_shape.x=inputs[i]->size();
+		sequence_shape.y=batch_size;
+		sequence_shape.z=1;
+		sequence_shape.w=1;
+		sequence_shape.dim=2;
+
+		if (debug){
+			printf("input blob shape %d %d %d %d dims %d\n",sequence_shape.x,sequence_shape.y,sequence_shape.z,sequence_shape.w,sequence_shape.dim);
+		}
+
+		status = ailiaSetInputBlobShape(ailia,&sequence_shape,input_blob_idx,AILIA_SHAPE_VERSION);
+		if(status!=AILIA_STATUS_SUCCESS){
+			setErrorDetail("ailiaSetInputBlobShape",ailiaGetErrorDetail(ailia));
+			return status;
+		}
+
+		if (inputs[i]->size() > 0){
+			status = ailiaSetInputBlobData(ailia, &(*inputs[i])[0], inputs[i]->size() * sizeof(float), input_blob_idx);
+			if (status != AILIA_STATUS_SUCCESS) {
+				setErrorDetail("ailiaSetInputBlobData",ailiaGetErrorDetail(ailia));
+				return status;
+			}
+		}
+	}
+
+	status = ailiaUpdate(ailia);
+	if (status != AILIA_STATUS_SUCCESS) {
+		setErrorDetail("ailiaUpdate",ailiaGetErrorDetail(ailia));
+		return status;
+	}
+
+	for (int i = 0; i < NUM_OUTPUTS_DECODER; i++){
+		unsigned int output_blob_idx = 0;
+		status = ailiaGetBlobIndexByOutputIndex(ailia, &output_blob_idx, i);
+		if (status != AILIA_STATUS_SUCCESS) {
+			setErrorDetail("ailiaGetBlobIndexByInputIndex",ailiaGetErrorDetail(ailia));
+			return status;
+		}
+
+		AILIAShape output_blob_shape;
+		status=ailiaGetBlobShape(ailia,&output_blob_shape,output_blob_idx,AILIA_SHAPE_VERSION);
+		if(status!=AILIA_STATUS_SUCCESS){
+			setErrorDetail("ailiaGetBlobShape", ailiaGetErrorDetail(ailia));
+			return status;
+		}
+
+		if (debug){
+			printf("output_blob_shape %d %d %d %d dims %d\n",output_blob_shape.x,output_blob_shape.y,output_blob_shape.z,output_blob_shape.w,output_blob_shape.dim);
+		}
+
+		(*outputs[i]).resize(output_blob_shape.x*output_blob_shape.y*output_blob_shape.z*output_blob_shape.w);
+
+		status =ailiaGetBlobData(ailia, &(*outputs[i])[0], outputs[i]->size() * sizeof(float), output_blob_idx);
+		if (status != AILIA_STATUS_SUCCESS) {
+			setErrorDetail("ailiaGetBlobData",ailiaGetErrorDetail(ailia));
+			return status;
+		}
+	}
+
+	return AILIA_STATUS_SUCCESS;
+}
+
+static int recognize_from_text(AILIANetwork* encoder, AILIANetwork* decoder, struct AILIATokenizer *tokenizer_source)
 {
 	int status = AILIA_STATUS_SUCCESS;
 	int pad_token_id = 32000;
 
-	PRINT_OUT("Input : %s\n", input_text.c_str());
-	std::vector<int> tokens = encode(input_text, tokenizer_source);
+	input_text = std::string("医療用語の訂正: ") + input_text;
 
-	std::vector<float> input_ids(tokens.size());
-	std::vector<float> attention_mask(tokens.size());
-	int num_beams = 1;
-	std::vector<float> decoder_input_ids(num_beams);
-	std::vector<float> past_key_values[NUM_PAST_KEY];
+	PRINT_OUT("Input : %s\n", input_text.c_str());
+
+	// neologd変換は後で考える
+
+	std::vector<int> input_text_tokens = encode(input_text, tokenizer_source);
+
+	std::vector<float> input_ids(input_text_tokens.size());
+	for (int i = 0; i < input_text_tokens.size(); i++){
+		input_ids[i] = (float)input_text_tokens[i];
+	}
 
 	PRINT_OUT("Input Tokens :\n");
-	for (int i = 0; i < tokens.size(); i++){
-		input_ids[i] = (float)tokens[i];
-		attention_mask[i] = 1;
+	for (int i = 0; i < input_ids.size(); i++){
 		PRINT_OUT("%d ", (int)input_ids[i]);
 	}
 	PRINT_OUT("\n");
-	for (int i = 0; i < num_beams; i++){
-		decoder_input_ids[i] = pad_token_id;
-	}
-	for (int i = 0; i < NUM_PAST_KEY; i++){
-		past_key_values[i].resize(num_beams * 8 * 0 * 64);
+
+	std::vector<float> *inputs_encoder[NUM_INPUTS_ENCODER];
+	inputs_encoder[0] = &input_ids;
+
+	std::vector<float> output_ids;
+	std::vector<float> *outputs_encoder[NUM_OUTPUTS_ENCODER];
+	outputs_encoder[0] = &output_ids;
+	status = forward_encoder(encoder, inputs_encoder, outputs_encoder);
+	if (status != AILIA_STATUS_SUCCESS){
+		return status;
 	}
 
-	std::vector<float> *inputs[NUM_INPUTS];
-	inputs[0] = &input_ids;
-	inputs[1] = &attention_mask;
-	inputs[2] = &decoder_input_ids;
-	for (int i = 0; i < NUM_PAST_KEY; i++){
-		inputs[3 + i] = &past_key_values[i];
+	int num_beams = 1;
+	std::vector<int> tokens_int;
+	std::vector<float> tokens;
+
+	PRINT_OUT("Encoded Tokens :\n");
+	for (int i = 0; i < output_ids.size(); i++){
+		PRINT_OUT("%d ", (int)output_ids[i]);
 	}
+	PRINT_OUT("\n");
+
+	std::vector<float> *inputs[NUM_INPUTS_DECODER];
+	inputs[0] = &tokens;
+	inputs[1] = &output_ids;
 
 	std::vector<float> logits;
-	//std::vector<float> past_key_values;
 
-	std::vector<float> *outputs[NUM_OUTPUTS];
+	std::vector<float> *outputs[NUM_OUTPUTS_DECODER];
 	outputs[0] = &logits;
-	for (int i = 0; i < NUM_PAST_KEY; i++){
-		outputs[1 + i] = &past_key_values[i];
-	}
 
 	tokens.clear();
+	tokens_int.clear();
+
 	while(true){
 		if (debug){
-			std::string text = decode(tokens, tokenizer_target);
+			std::string text = decode(tokens_int, tokenizer_source);
 			printf("Loop %d %s\n", (int)tokens.size(), text.c_str());
 		}
 
-		status = forward(net, inputs, outputs);
+		status = forward_decoder(decoder, inputs, outputs);
 		if (status != AILIA_STATUS_SUCCESS){
 			return status;
 		}
-
-		logits[pad_token_id] = -INFINITY;
 
 		int eos_token_id = 0;
 
@@ -389,10 +459,7 @@ static int recognize_from_text(AILIANetwork* net, struct AILIATokenizer *tokeniz
 		}
 
 		tokens.push_back(arg_max);
-
-		for (int i = 0; i < num_beams; i++){
-			decoder_input_ids[i] = arg_max;
-		}
+		tokens_int.push_back(arg_max);
 
 		if (arg_max == eos_token_id){
 			break;
@@ -400,12 +467,11 @@ static int recognize_from_text(AILIANetwork* net, struct AILIATokenizer *tokeniz
 	}
 	
 
-	std::string text = decode(tokens, tokenizer_target);
+	std::string text = decode(tokens_int, tokenizer_source);
 	PRINT_OUT("Output : %s\n",text.c_str());
 
 	PRINT_OUT("Output Tokens :\n");
 	for (int i = 0; i < tokens.size(); i++){
-		attention_mask[i] = 1;
 		PRINT_OUT("%d ", tokens[i]);
 	}
 	PRINT_OUT("\n");
@@ -457,7 +523,16 @@ int main(int argc, char **argv)
 
 	// net initialize
 	AILIANetwork *ailia_encoder;
+	AILIANetwork *ailia_decoder;
 	status = ailiaCreate(&ailia_encoder, env_id, AILIA_MULTITHREAD_AUTO);
+	if (status != AILIA_STATUS_SUCCESS) {
+		PRINT_ERR("ailiaCreate failed %d\n", status);
+		if (status == AILIA_STATUS_LICENSE_NOT_FOUND || status==AILIA_STATUS_LICENSE_EXPIRED){
+			PRINT_OUT("License file not found or expired : please place license file (AILIA.lic)\n");
+		}
+		return -1;
+	}
+	status = ailiaCreate(&ailia_decoder, env_id, AILIA_MULTITHREAD_AUTO);
 	if (status != AILIA_STATUS_SUCCESS) {
 		PRINT_ERR("ailiaCreate failed %d\n", status);
 		if (status == AILIA_STATUS_LICENSE_NOT_FOUND || status==AILIA_STATUS_LICENSE_EXPIRED){
@@ -470,7 +545,6 @@ int main(int argc, char **argv)
 	status = ailiaGetSelectedEnvironment(ailia_encoder, &env_ptr, AILIA_ENVIRONMENT_VERSION);
 	if (status != AILIA_STATUS_SUCCESS) {
 		PRINT_ERR("ailiaGetSelectedEnvironment failed %d\n", status);
-		ailiaDestroy(ailia_encoder);
 		return -1;
 	}
 
@@ -480,14 +554,25 @@ int main(int argc, char **argv)
 	if (status != AILIA_STATUS_SUCCESS) {
 		PRINT_ERR("ailiaOpenStreamFile failed %d\n", status);
 		PRINT_ERR("ailiaGetErrorDetail %s\n", ailiaGetErrorDetail(ailia_encoder));
+		return -1;
+	}
+	status = ailiaOpenStreamFile(ailia_decoder, model_decoder.c_str());
+	if (status != AILIA_STATUS_SUCCESS) {
+		PRINT_ERR("ailiaOpenStreamFile failed %d\n", status);
+		PRINT_ERR("ailiaGetErrorDetail %s\n", ailiaGetErrorDetail(ailia_decoder));
 		ailiaDestroy(ailia_encoder);
+		ailiaDestroy(ailia_decoder);
 		return -1;
 	}
 
 	status = ailiaOpenWeightFile(ailia_encoder, weight_encoder.c_str());
 	if (status != AILIA_STATUS_SUCCESS) {
 		PRINT_ERR("ailiaOpenWeightFile failed %d\n", status);
-		ailiaDestroy(ailia_encoder);
+		return -1;
+	}
+	status = ailiaOpenWeightFile(ailia_decoder, weight_decoder.c_str());
+	if (status != AILIA_STATUS_SUCCESS) {
+		PRINT_ERR("ailiaOpenWeightFile failed %d\n", status);
 		return -1;
 	}
 
@@ -503,11 +588,12 @@ int main(int argc, char **argv)
 		return -1;
 	}
 
-	//status = recognize_from_text(ailia_encoder, ailia_decoder, tokenizer_source);
+	status = recognize_from_text(ailia_encoder, ailia_decoder, tokenizer_source);
 
 	ailiaTokenizerDestroy(tokenizer_source);
 
 	ailiaDestroy(ailia_encoder);
+	ailiaDestroy(ailia_decoder);
 
 	return status;
 }
