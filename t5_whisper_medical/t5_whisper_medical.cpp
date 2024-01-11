@@ -20,7 +20,7 @@
 #include "ailia.h"
 #include "ailia_tokenizer.h"
 
-bool debug = true;
+bool debug = false;
 
 
 // ======================
@@ -459,14 +459,19 @@ static int recognize_from_text(AILIANetwork* encoder, AILIANetwork* decoder, str
 
 		int eos_token_id = 1;
 
-		log_softmax(&logits[0], logits.size()); // logits is 32128
+		const int LOGITS_LENGTH = 32128;
+		int offset = logits.size() - LOGITS_LENGTH;
+
+		float logits_current[LOGITS_LENGTH];
+		memcpy(logits_current, &logits[offset], sizeof(float) * LOGITS_LENGTH);
+		log_softmax(&logits_current[0], LOGITS_LENGTH);
 
 		float prob = -INFINITY;
 		int arg_max = 0;
-		for (int i = 0; i < logits.size(); i++){
+		for (int i = 0; i < LOGITS_LENGTH; i++){
 			//PRINT_OUT("%f ", logits[i]);
-			if (prob < logits[i]){
-				prob = logits[i];
+			if (prob < logits_current[i]){
+				prob = logits_current[i];
 				arg_max = i;
 			}
 		}
@@ -475,12 +480,12 @@ static int recognize_from_text(AILIANetwork* encoder, AILIANetwork* decoder, str
 			PRINT_OUT("Token %d (%f)\n", arg_max, prob);
 		}
 
-		tokens.push_back(arg_max);
-		tokens_int.push_back(arg_max);
-
 		if (arg_max == eos_token_id){
 			break;
 		}
+
+		tokens.push_back(arg_max);
+		tokens_int.push_back(arg_max);
 	}
 	
 
