@@ -146,20 +146,20 @@ static int argument_parser(int argc, char **argv)
 // Main functions
 // ======================
 
-void softmax(float *data, int n){
-	float sum=0;
-	for(int i=0;i<n;i++){
-		sum+=exp(data[i]);
-	}
-	for(int i=0;i<n;i++){
-		data[i]=exp(data[i])/sum;
-	}
-}
-
 void log_softmax(float *data, int n){
-	softmax(data,n);
-	for(int i=0;i<n;i++){
-		data[i]=log(data[i]);
+	float max_value = -INFINITY;
+	for (int i = 0; i < n; i++){
+		max_value = std::max(max_value, data[i]);
+	}
+
+	float sum = 0;
+	for (int i = 0; i < n; i++){
+		sum += exp(data[i] - max_value);
+	}
+	sum = log(sum);
+
+	for (int i = 0; i < n; i++){
+		data[i] = (data[i] - max_value) - sum;
 	}
 }
 
