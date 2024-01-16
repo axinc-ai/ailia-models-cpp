@@ -399,7 +399,6 @@ static int recognize_from_text(AILIANetwork* net, struct AILIATokenizer *tokeniz
 
 	PRINT_OUT("Output Tokens :\n");
 	for (int i = 0; i < tokens.size(); i++){
-		attention_mask[i] = 1;
 		PRINT_OUT("%d ", tokens[i]);
 	}
 	PRINT_OUT("\n");
