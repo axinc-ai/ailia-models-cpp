@@ -53,6 +53,8 @@ bool debug = false;
 
 #define EOS_TOKEN_ID 1
 
+#define MAX_LENGTH 512
+
 static std::string weight_encoder(ENCODER_WEIGHT_PATH);
 static std::string model_encoder(ENCODER_MODEL_PATH);
 
@@ -246,7 +248,7 @@ int forward_encoder(AILIANetwork *ailia, std::vector<float> *inputs[NUM_INPUTS_E
 		sequence_shape.dim=2;
 
 		if (debug){
-			printf("input blob shape %d %d %d %d dims %d\n",sequence_shape.x,sequence_shape.y,sequence_shape.z,sequence_shape.w,sequence_shape.dim);
+			PRINT_OUT("input blob shape %d %d %d %d dims %d\n",sequence_shape.x,sequence_shape.y,sequence_shape.z,sequence_shape.w,sequence_shape.dim);
 		}
 
 		status = ailiaSetInputBlobShape(ailia,&sequence_shape,input_blob_idx,AILIA_SHAPE_VERSION);
@@ -286,7 +288,7 @@ int forward_encoder(AILIANetwork *ailia, std::vector<float> *inputs[NUM_INPUTS_E
 		}
 
 		if (debug){
-			printf("output_blob_shape %d %d %d %d dims %d\n",output_blob_shape.x,output_blob_shape.y,output_blob_shape.z,output_blob_shape.w,output_blob_shape.dim);
+			PRINT_OUT("output_blob_shape %d %d %d %d dims %d\n",output_blob_shape.x,output_blob_shape.y,output_blob_shape.z,output_blob_shape.w,output_blob_shape.dim);
 		}
 
 		(*outputs[i]).resize(output_blob_shape.x*output_blob_shape.y*output_blob_shape.z*output_blob_shape.w);
@@ -332,7 +334,7 @@ int forward_decoder(AILIANetwork *ailia, std::vector<float> *inputs[NUM_INPUTS_D
 		}
 
 		if (debug){
-			printf("input blob shape %d %d %d %d dims %d\n",sequence_shape.x,sequence_shape.y,sequence_shape.z,sequence_shape.w,sequence_shape.dim);
+			PRINT_OUT("input blob shape %d %d %d %d dims %d\n",sequence_shape.x,sequence_shape.y,sequence_shape.z,sequence_shape.w,sequence_shape.dim);
 		}
 
 		status = ailiaSetInputBlobShape(ailia,&sequence_shape,input_blob_idx,AILIA_SHAPE_VERSION);
@@ -372,7 +374,7 @@ int forward_decoder(AILIANetwork *ailia, std::vector<float> *inputs[NUM_INPUTS_D
 		}
 
 		if (debug){
-			printf("output_blob_shape %d %d %d %d dims %d\n",output_blob_shape.x,output_blob_shape.y,output_blob_shape.z,output_blob_shape.w,output_blob_shape.dim);
+			PRINT_OUT("output_blob_shape %d %d %d %d dims %d\n",output_blob_shape.x,output_blob_shape.y,output_blob_shape.z,output_blob_shape.w,output_blob_shape.dim);
 		}
 
 		(*outputs[i]).resize(output_blob_shape.x*output_blob_shape.y*output_blob_shape.z*output_blob_shape.w);
@@ -397,6 +399,10 @@ static int recognize_from_text(AILIANetwork* encoder, AILIANetwork* decoder, str
 	PRINT_OUT("Input : %s\n", input_text.c_str());
 
 	std::vector<int> input_text_tokens = encode(input_text, tokenizer_source);
+	if (input_text_tokens.size() > MAX_LENGTH){
+		input_text_tokens[MAX_LENGTH - 1] = input_text_tokens[input_text_tokens.size() - 1];
+		input_text_tokens.resize(MAX_LENGTH);
+	}
 
 	std::vector<float> input_ids(input_text_tokens.size());
 	for (int i = 0; i < input_text_tokens.size(); i++){
@@ -447,11 +453,11 @@ static int recognize_from_text(AILIANetwork* encoder, AILIANetwork* decoder, str
 	tokens.push_back(0);
 	tokens_int.push_back(0);
 
-	while(true){
+	while(tokens.size() < MAX_LENGTH){
 		if (debug){
 			std::string text = decode(tokens_int, tokenizer_source);
-			printf("---\n");
-			printf("Loop %d %s\n", (int)tokens.size(), text.c_str());
+			PRINT_OUT("---\n");
+			PRINT_OUT("Loop %d %s\n", (int)tokens.size(), text.c_str());
 		}
 
 		status = forward_decoder(decoder, inputs, outputs);
@@ -493,7 +499,7 @@ static int recognize_from_text(AILIANetwork* encoder, AILIANetwork* decoder, str
 
 	PRINT_OUT("Output Tokens :\n");
 	for (int i = 0; i < tokens.size(); i++){
-		PRINT_OUT("%d ", tokens[i]);
+		PRINT_OUT("%d ", (int)tokens[i]);
 	}
 	PRINT_OUT("\n");
 
@@ -600,12 +606,12 @@ int main(int argc, char **argv)
 	AILIATokenizer *tokenizer_source;
 	status = ailiaTokenizerCreate(&tokenizer_source, AILIA_TOKENIZER_TYPE_T5, AILIA_TOKENIZER_FLAG_NONE);
 	if (status != 0){
-		printf("ailiaTokenizerCreate error %d\n", status);
+		PRINT_ERR("ailiaTokenizerCreate error %d\n", status);
 		return -1;
 	}
 	status = ailiaTokenizerOpenModelFile(tokenizer_source, "spiece.model");
 	if (status != 0){
-		printf("ailiaTokenizerOpenModelFile error %d\n", status);
+		PRINT_ERR("ailiaTokenizerOpenModelFile error %d\n", status);
 		return -1;
 	}
 
