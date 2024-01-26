@@ -10,6 +10,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 #include <vector>
 #include <string>
@@ -63,6 +64,10 @@ static std::string merge_file("roberta-base/merges.txt");
 
 static std::string input_wav_path("input.wav");
 static std::vector<std::string> texts;
+static unsigned int token_length = 77;
+
+typedef float TYPE_IDS;
+typedef float TYPE_MASK;
 
 static bool benchmark  = false;
 static int args_env_id = -1;
@@ -75,7 +80,7 @@ static bool debug = true;
 
 static void print_usage()
 {
-    PRINT_OUT("usage: clap [-h] [-i WAV_FILE] [-b] [-e ENV_ID]\n");
+    PRINT_OUT("usage: clap [-h] [-i WAV_FILE] [-t TEXT] [-v VOCAB_FILE] [-m MERGE_FILE] [-b] [-e ENV_ID]\n");
     return;
 }
 
@@ -87,7 +92,7 @@ static void print_help()
     PRINT_OUT("optional arguments:\n");
     PRINT_OUT("  -h, --help            show this help message and exit\n");
     PRINT_OUT("  -i WAV_FILE, --input WAV_FILE\n");
-    PRINT_OUT("                        The input wav file path.\n");
+    PRINT_OUT("                        The input wav file.\n");
     PRINT_OUT("  -t TEXT, --text TEXT\n");
     PRINT_OUT("                        The input text.\n");
 	PRINT_OUT("  -v VOCAB_FILE, --vocab_file VOCAB_FILE\n");
@@ -144,6 +149,16 @@ static int argument_parser(int argc, char **argv)
     return AILIA_STATUS_SUCCESS;
 }
 
+void print_net(AILIANetwork *net){
+	char* buf;
+	unsigned int length = 0;
+	ailiaGetSummaryLength(net, &length);
+	buf = (char*)malloc(length);
+	ailiaSummary(net, buf, length);
+	PRINT_OUT("%s\n", buf);
+	free(buf);
+}
+
 // ======================
 // Audio embeddings
 // ======================
@@ -154,8 +169,8 @@ static int argument_parser(int argc, char **argv)
 // ======================
 
 void tokenize(AILIATokenizer* tokenizer, std::string text, 
-	std::vector<int>& input_ids, std::vector<int>& attention_mask,
-	unsigned int max_length=77)
+	std::vector<TYPE_IDS>& input_ids, std::vector<TYPE_MASK>& attention_mask,
+	const unsigned int token_length=77)
 {
     if (debug){
         PRINT_OUT("Input Text : %s\n", text.c_str());
@@ -166,9 +181,9 @@ void tokenize(AILIATokenizer* tokenizer, std::string text,
 	std::vector<int> tokens(count);
 	ailiaTokenizerGetTokens(tokenizer, &tokens[0], count);
 
-	input_ids = std::vector<int>(max_length);
-	attention_mask = std::vector<int>(max_length);
-    for (int i = 0; i < max_length; i++){
+	input_ids = std::vector<TYPE_IDS>(token_length);
+	attention_mask = std::vector<TYPE_MASK>(token_length);
+    for (int i = 0; i < token_length; i++){
         if (i < tokens.size()){
             input_ids[i] = tokens[i];
 			attention_mask[i] = 1;
@@ -178,14 +193,143 @@ void tokenize(AILIATokenizer* tokenizer, std::string text,
         }
     }
     if (debug){
-        PRINT_OUT("Tokens : ");
+        PRINT_OUT("input Tokens : ");
         for (int i = 0; i < input_ids.size(); i++){
-            PRINT_OUT("%d ", input_ids[i]);
+            PRINT_OUT("%.0f ", input_ids[i]);
         }
         PRINT_OUT("\n");
+        //PRINT_OUT("input Mask   : ");
+        //for (int i = 0; i < input_ids.size(); i++){
+        //    PRINT_OUT("%.0f ", attention_mask[i]);
+        //}
+        //PRINT_OUT("\n");
     }
 }
 
+std::vector<float> text_embedding(AILIANetwork *ailia_text_robertamodel, AILIANetwork *ailia_text_projection,
+	std::vector<TYPE_IDS>& ary_input_ids, std::vector<TYPE_MASK>& ary_attention_mask,
+	const unsigned int num_texts, const unsigned int token_length=77)
+{
+    std::vector<float> features, branch;
+	int status;
+	AILIAShape shape;
+	unsigned int blob_idx_ids, blob_idx_mask, blob_idx_out1;
+	unsigned int blob_idx_x, blob_idx_text_embed;
+	
+	// get info of ailia_text_robertamodel
+	status = ailiaFindBlobIndexByName(ailia_text_robertamodel, &blob_idx_ids, "input_ids");
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("ailiaFindBlobIndexByName failed %d\n", status);
+        return features;
+    }
+	status = ailiaFindBlobIndexByName(ailia_text_robertamodel, &blob_idx_mask, "attention_mask");
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("ailiaFindBlobIndexByName failed %d\n", status);
+        return features;
+    }
+	shape.dim = 2;
+	shape.x = token_length;
+	shape.y = num_texts;
+	shape.z = 0;
+	shape.w = 0;
+	status = ailiaSetInputBlobShape(ailia_text_robertamodel, &shape, blob_idx_ids, AILIA_SHAPE_VERSION);
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("ailiaSetInputBlobShape failed %d\n", status);
+        return features;
+    }
+	status = ailiaSetInputBlobShape(ailia_text_robertamodel, &shape, blob_idx_mask, AILIA_SHAPE_VERSION);
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("ailiaSetInputBlobShape failed %d\n", status);
+        return features;
+    }
+	status = ailiaGetBlobIndexByOutputIndex(ailia_text_robertamodel, &blob_idx_out1, 1);
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("ailiaGetBlobIndexByOutputIndex failed %d\n", status);
+        return features;
+    }
+	status = ailiaGetBlobShape(ailia_text_robertamodel, &shape, blob_idx_out1, AILIA_SHAPE_VERSION);
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("ailiaGetBlobShape failed %d\n", status);
+        return features;
+    }
+	PRINT_OUT("text_robertamodel input=%d,%d output=%d outshape=[%d,%d]\n", blob_idx_ids, blob_idx_mask, blob_idx_out1, shape.y, shape.x);
+	//print_net(ailia_text_robertamodel);
+	
+	// set input of ailia_text_robertamodel
+	status = ailiaSetInputBlobData(ailia_text_robertamodel, &ary_input_ids[0], ary_input_ids.size() * sizeof(TYPE_IDS), blob_idx_ids);
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("ailiaSetInputBlobData failed %d\n", status);
+        return features;
+    }
+	status = ailiaSetInputBlobData(ailia_text_robertamodel, &ary_attention_mask[0], ary_attention_mask.size() * sizeof(TYPE_MASK), blob_idx_mask);
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("ailiaSetInputBlobData failed %d\n", status);
+        return features;
+    }
+
+	// predict ailia_text_robertamodel
+	status = ailiaUpdate(ailia_text_robertamodel);
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("ailiaUpdate failed %d\n", status);
+        return features;
+    }
+	
+	// get output
+	branch = std::vector<float>(shape.x * shape.y);
+	status = ailiaGetBlobData(ailia_text_robertamodel, &branch[0], branch.size() * sizeof(float), blob_idx_out1);
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("ailiaGetBlobData failed %d\n", status);
+        return features;
+    }
+
+	// get info of ailia_text_projection
+	status = ailiaFindBlobIndexByName(ailia_text_projection, &blob_idx_x, "x");
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("ailiaFindBlobIndexByName failed %d\n", status);
+        return features;
+    }
+	status = ailiaSetInputBlobShape(ailia_text_projection, &shape, blob_idx_x, AILIA_SHAPE_VERSION);
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("ailiaSetInputBlobShape failed %d\n", status);
+        return features;
+    }
+	status = ailiaGetBlobIndexByOutputIndex(ailia_text_projection, &blob_idx_text_embed, 0);
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("ailiaGetBlobIndexByOutputIndex failed %d\n", status);
+        return features;
+    }
+	status = ailiaGetBlobShape(ailia_text_projection, &shape, blob_idx_text_embed, AILIA_SHAPE_VERSION);
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("ailiaGetBlobShape failed %d\n", status);
+        return features;
+    }
+	PRINT_OUT("text_projection input=%d output=%d outshape=[%d,%d]\n", blob_idx_x, blob_idx_text_embed, shape.y, shape.x);
+	//print_net(ailia_text_projection);
+
+	// set input of ailia_text_projection
+	status = ailiaSetInputBlobData(ailia_text_projection, &branch[0], branch.size() * sizeof(float), blob_idx_x);
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("ailiaSetInputBlobData failed %d\n", status);
+        return features;
+    }
+
+	// predict ailia_text_projection
+	status = ailiaUpdate(ailia_text_projection);
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("ailiaUpdate failed %d\n", status);
+        return features;
+    }
+	
+	// get output
+	features = std::vector<float>(shape.x * shape.y);
+	status = ailiaGetBlobData(ailia_text_projection, &features[0], features.size() * sizeof(float), blob_idx_text_embed);
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("ailiaGetBlobData failed %d\n", status);
+        return features;
+    }
+
+    return features;
+}
 
 // ======================
 // Main functions
@@ -271,10 +415,8 @@ int main(int argc, char **argv)
     if (status != AILIA_STATUS_SUCCESS) {
         return -1;
     }
-
+	
     // Tokenize
-    std::vector<std::vector<int>> ary_input_ids;
-    std::vector<std::vector<int>> ary_attention_mask;
     if (texts.size() == 0){
 		texts = {
 			"applause applaud clap", 
@@ -305,14 +447,26 @@ int main(int argc, char **argv)
 		return -1;
 	}
     PRINT_OUT("Tokenize...\n");
-    for (int i = 0; i < texts.size(); i++){
-		std::vector<int> input_ids;
-		std::vector<int> attention_mask;
-        tokenize(tokenizer, texts[i], input_ids, attention_mask);
-        ary_input_ids.push_back(input_ids);
-		ary_attention_mask.push_back(attention_mask);
+	unsigned int num_texts = texts.size();
+    std::vector<TYPE_IDS> ary_input_ids(num_texts * token_length);
+    std::vector<TYPE_MASK> ary_attention_mask(num_texts * token_length);
+    for (int i = 0; i < num_texts; i++){
+		std::vector<TYPE_IDS> input_ids;
+		std::vector<TYPE_MASK> attention_mask;
+        tokenize(tokenizer, texts[i], input_ids, attention_mask, token_length);
+		memcpy(&ary_input_ids[i * token_length], &input_ids[0], sizeof(TYPE_IDS) * token_length);
+		memcpy(&ary_attention_mask[i * token_length], &attention_mask[0], sizeof(TYPE_MASK) * token_length);
     }
 	ailiaTokenizerDestroy(tokenizer);
+
+    // text embedding
+    PRINT_OUT("Text embedding...\n");
+    std::vector<float> text_features = text_embedding(ailia_text_robertamodel, ailia_text_projection, 
+		ary_input_ids, ary_attention_mask, num_texts, token_length);
+
+    // audio embedding
+    PRINT_OUT("Audio embedding...\n");
+
 
     // release instance
     ailiaDestroy(ailia_audio);
