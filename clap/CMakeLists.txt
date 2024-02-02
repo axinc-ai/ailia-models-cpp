@@ -1,8 +1,9 @@
 ﻿cmake_minimum_required(VERSION 3.1)
 
 set (PROJECT_NAME clap)
-set (SRC_FILES ${PROJECT_NAME}.cpp)
+set (SRC_FILES ${PROJECT_NAME}.cpp clap_utils.cpp)
 set (SRC_FILES ${SRC_FILES} ../util/utils.cpp)
+set (SRC_FILES ${SRC_FILES} ../util/wave_reader.cpp)
 set (INCLUDE_PATH $ENV{AILIA_LIBRARY_PATH}/include $ENV{AILIA_TOKENIZER_PATH}/include ../util)
 if(WIN32)
     set (LIBRARY_PATH $ENV{AILIA_LIBRARY_PATH}/windows/x64 $ENV{AILIA_TOKENIZER_PATH}/windows/x64)
