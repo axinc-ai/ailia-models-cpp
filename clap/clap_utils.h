@@ -47,4 +47,4 @@ struct AUDIO_CONFIG {
 };
 
 std::vector<float> get_audio_features(std::vector<float>& audio_data, unsigned int max_len, 
-    std::string data_truncating, std::string data_filling, const AUDIO_CONFIG& audio_cfg);
+    std::string data_truncating, std::string data_filling, const AUDIO_CONFIG& audio_cfg, bool* plonger=NULL);

@@ -9,13 +9,15 @@
 *******************************************************************/
 #include <string.h>
 #include <math.h>
+#include <stdlib.h>
 
 #include "clap_utils.h"
 #include "ailia.h"
 #include "ailia_audio.h"
 extern bool debug;
 
-static std::vector<float> get_mel_ailia(std::vector<float>& audio_data, const AUDIO_CONFIG& audio_cfg)
+static std::vector<float> get_mel_ailia(std::vector<float>& audio_data, const AUDIO_CONFIG& audio_cfg,
+    int* dst_frame_n=NULL, int* dst_mel_n=NULL)
 {
     const int center = AILIA_AUDIO_STFT_CENTER_ENABLE;
     const int mel_n = 64;
@@ -75,25 +77,86 @@ static std::vector<float> get_mel_ailia(std::vector<float>& audio_data, const AU
             *dst++ = mel[i * frame_n + j];
         }
     }
+    if(dst_frame_n) *dst_frame_n = frame_n;
+    if(dst_mel_n) *dst_mel_n = mel_n;
     return mel_t;
 }
 
 std::vector<float> get_audio_features(std::vector<float>& audio_data, unsigned int max_len, 
-    std::string data_truncating, std::string data_filling, const AUDIO_CONFIG& audio_cfg)
+    std::string data_truncating, std::string data_filling, const AUDIO_CONFIG& audio_cfg, bool* plonger)
 {
     std::vector<float> mel_fusion;
+    if(plonger) *plonger = false;
     
     if(audio_data.size() > max_len){
-        
+        if(data_truncating == "fusion"){
+            // fusion
+            int frame_n = 0, mel_n = 0;
+            std::vector<float> mel = get_mel_ailia(audio_data, audio_cfg, &frame_n, &mel_n);
+            if(mel.size() < 1) return mel_fusion;
+
+            int chunk_frames = max_len / audio_cfg.hop_size + 1;  // the +1 related to how the spectrogram is computed
+            int total_frames = frame_n;
+            if(debug){
+                PRINT_OUT("shrink audio %ld to be %d, frame_n=%d\n", audio_data.size(), max_len, frame_n);
+            }
+            if(chunk_frames == total_frames){
+                // there is a corner case where the audio length is
+                // larger than max_len but smaller than max_len+hop_size.
+                // In this case, we just use the whole audio.
+                mel_fusion = std::vector<float>(mel.size() * 4);
+                for(int i=0; i<4; i++){
+                    memcpy(&mel_fusion[i * mel.size()], &mel[0], mel.size() * sizeof(float));
+                }
+            }
+            else{
+                // split to three parts
+                const int frame_size = chunk_frames * mel_n;
+                mel_fusion = std::vector<float>(frame_size * 4);
+                int num = total_frames - chunk_frames + 1;
+                int div = std::max(1, (num / 3));
+                for(int last=0, i=0; i<3; i++){
+                    int first = last;
+                    last = std::min(num, first + div);
+                    int choice = 0;
+                    if(first < last){
+                        // randomly choose index for each part
+                        choice = first + (rand() % (last - first));
+                    }
+                    if(debug){
+                        PRINT_OUT("  random choose %d / %d\n", choice, num);
+                    }
+                    memcpy(&mel_fusion[i * frame_size], &mel[choice * mel_n], frame_size * sizeof(float));
+                }
+                // shrink the mel : mel_shrink_numpy = np.resize(mel[None], (chunk_frames, 64))
+                memcpy(&mel_fusion[3 * frame_size], &mel[0], frame_size * sizeof(float));
+
+                if(plonger) *plonger = true;
+            }
+        }
+        else{
+            PRINT_ERR("Not support data_truncating: %s\n", data_truncating.c_str());
+            return mel_fusion;
+        }
     }
     else{   // padding
         if(audio_data.size() < max_len){
+            if(debug){
+                PRINT_OUT("padding for audio %ld to be %d\n", audio_data.size(), max_len);
+            }
             std::vector<float> new_audio_data(max_len, 0);
-            if(data_filling == "repeatpad"){
+            if(data_filling == "repeatpad"  || data_filling == "repeat"){
                 int n_repeat = max_len / audio_data.size();
                 for(int i=0; i<n_repeat; i++){
                     memcpy(&new_audio_data[i * audio_data.size()], &audio_data[0], audio_data.size() * sizeof(float));
                 }
+                if(data_filling == "repeat"){
+                    int rem = max_len - audio_data.size() * n_repeat;
+                    memcpy(&new_audio_data[n_repeat * audio_data.size()], &audio_data[0], rem * sizeof(float));
+                }
+            }
+            else if(data_filling == "pad"){
+                memcpy(&new_audio_data[0], &audio_data[0], audio_data.size() * sizeof(float));
             }
             else{
                 PRINT_ERR("Not support data_filling: %s\n", data_filling.c_str());

@@ -28,6 +28,7 @@
 #undef UNICODE
 
 #include "ailia.h"
+#include "ailia_audio.h"
 #include "ailia_tokenizer.h"
 
 #include "utils.h"
@@ -66,7 +67,7 @@ typedef float TYPE_MASK;
 
 static bool benchmark  = false;
 static int args_env_id = -1;
-bool debug = true;
+bool debug = false;
 
 
 // ======================
@@ -75,7 +76,7 @@ bool debug = true;
 
 static void print_usage()
 {
-    PRINT_OUT("usage: clap [-h] [-i WAV_FILE] [-t TEXT] [-v VOCAB_FILE] [-m MERGE_FILE] [-b] [-e ENV_ID]\n");
+    PRINT_OUT("usage: clap [-h] [-i WAV_FILE] [-t TEXT] [-v VOCAB_FILE] [-m MERGE_FILE] [-e ENV_ID]\n");
     return;
 }
 
@@ -94,9 +95,9 @@ static void print_help()
     PRINT_OUT("                        The vocab file in roberta tokenizer.\n");
 	PRINT_OUT("  -m MERGE_FILE, --merge_file MERGE_FILE\n");
     PRINT_OUT("                        The merge file in roberta tokenizer.\n");
-    PRINT_OUT("  -b, --benchmark       Running the inference on the same input 5 times to\n");
-    PRINT_OUT("                        measure execution performance. (Cannot be used in\n");
-    PRINT_OUT("                        video mode)\n");
+//    PRINT_OUT("  -b, --benchmark       Running the inference on the same input 5 times to\n");
+//    PRINT_OUT("                        measure execution performance. (Cannot be used in\n");
+//    PRINT_OUT("                        video mode)\n");
 	PRINT_OUT("  -e ENV_ID, --env_id ENV_ID\n");
 	PRINT_OUT("                        The backend environment id.\n");
     return;
@@ -144,7 +145,7 @@ static int argument_parser(int argc, char **argv)
     return AILIA_STATUS_SUCCESS;
 }
 
-void print_net(AILIANetwork *net){
+static void print_net(AILIANetwork *net){
 	char* buf;
 	unsigned int length = 0;
 	ailiaGetSummaryLength(net, &length);
@@ -157,7 +158,7 @@ void print_net(AILIANetwork *net){
 // ======================
 // Utils
 // ======================
-float cos_sim(float* a, float* b, size_t len)
+static float cos_sim(float* a, float* b, size_t len)
 {
     float dot = 0, na = 0, nb = 0;
     for(size_t i=0; i<len; i++){
@@ -172,15 +173,36 @@ float cos_sim(float* a, float* b, size_t len)
 // ======================
 // Audio embeddings
 // ======================
-std::vector<float> audio_embedding(AILIANetwork *ailia_audio, std::string wav_file)
+static std::vector<float> audio_embedding(AILIANetwork *ailia_audio, std::string wav_file)
 {
+    int status;
     std::vector<float> feature;
-    //print_net(ailia_audio);
     
+    const int target_sample_rate = 48000;
     int sampleRate=0, nChannels=0, nSamples=0;
     std::vector<float> audio_waveform = read_wave_file(wav_file.c_str(), &sampleRate, &nChannels, &nSamples);
     if (debug){
         PRINT_OUT("wav sampleRate=%d, nChannels=%d, nSamples=%d : %s\n", sampleRate, nChannels, nSamples, wav_file.c_str());
+    }
+    
+    // resample
+    if(sampleRate != target_sample_rate){
+        int dst_n = 0;
+        status = ailiaAudioGetResampleLen(&dst_n, target_sample_rate, audio_waveform.size(), sampleRate);
+        if (status != AILIA_STATUS_SUCCESS) {
+            PRINT_ERR("ailiaAudioGetResampleLen failed %d\n", status);
+            return feature;
+        }
+        if (debug){
+            PRINT_OUT("convert sample rate %d to %d, length %ld to %d\n", sampleRate, target_sample_rate, audio_waveform.size(), dst_n);
+        }
+        std::vector<float> new_audio_waveform(dst_n);
+        status = ailiaAudioResample(&new_audio_waveform[0], &audio_waveform[0], target_sample_rate, dst_n, sampleRate, audio_waveform.size());
+        if (status != AILIA_STATUS_SUCCESS) {
+            PRINT_ERR("ailiaAudioResample failed %d\n", status);
+            return feature;
+        }
+        audio_waveform = new_audio_waveform;
     }
     
     // quantize as int16
@@ -195,11 +217,6 @@ std::vector<float> audio_embedding(AILIANetwork *ailia_audio, std::string wav_fi
     AUDIO_CONFIG audio_config;
     std::vector<float> mel_fusion = get_audio_features(audio_waveform, 480000, "fusion", "repeatpad", audio_config);
     
-    /* input blobs
-    000	longer	BOOL	2	1	1	1	1	1	0
-    001	mel_fusion	FLOAT	4	1	1	4	1001	64	0
-    */
-    int status;
     AILIAShape shape;
 	unsigned int blob_idx_longer, blob_idx_mel_fusion, blob_idx_out0;
 	
@@ -228,7 +245,7 @@ std::vector<float> audio_embedding(AILIANetwork *ailia_audio, std::string wav_fi
         PRINT_OUT("audio input=%d,%d output=%d mel_fusion shape=[%d,%d,%d]\n", blob_idx_longer, blob_idx_mel_fusion, blob_idx_out0, shape.z, shape.y, shape.x);
     }
     if(mel_fusion.size() != (shape.x * shape.y * shape.z)){
-        PRINT_ERR("Invalid length of mel_fusion : %ld\n", mel_fusion.size());
+        PRINT_ERR("Invalid length of mel_fusion : %ld must be %d\n", mel_fusion.size(), shape.x * shape.y * shape.z);
         return feature;
     }
 
@@ -275,7 +292,7 @@ std::vector<float> audio_embedding(AILIANetwork *ailia_audio, std::string wav_fi
 // Text embeddings
 // ======================
 
-void tokenize(AILIATokenizer* tokenizer, std::string text, 
+static void tokenize(AILIATokenizer* tokenizer, std::string text, 
 	std::vector<TYPE_IDS>& input_ids, std::vector<TYPE_MASK>& attention_mask,
 	const unsigned int token_length=77)
 {
@@ -313,7 +330,7 @@ void tokenize(AILIATokenizer* tokenizer, std::string text,
     }
 }
 
-std::vector<float> text_embedding(AILIANetwork *ailia_text_robertamodel, AILIANetwork *ailia_text_projection,
+static std::vector<float> text_embedding(AILIANetwork *ailia_text_robertamodel, AILIANetwork *ailia_text_projection,
 	std::vector<TYPE_IDS>& ary_input_ids, std::vector<TYPE_MASK>& ary_attention_mask, 
     unsigned int* dim_feature,
 	const unsigned int num_texts, const unsigned int token_length=77)
@@ -360,8 +377,9 @@ std::vector<float> text_embedding(AILIANetwork *ailia_text_robertamodel, AILIANe
         PRINT_ERR("ailiaGetBlobShape failed %d\n", status);
         return features;
     }
-	PRINT_OUT("text_robertamodel input=%d,%d output=%d outshape=[%d,%d]\n", blob_idx_ids, blob_idx_mask, blob_idx_out1, shape.y, shape.x);
-	//print_net(ailia_text_robertamodel);
+    if(debug){
+        PRINT_OUT("text_robertamodel input=%d,%d output=%d outshape=[%d,%d]\n", blob_idx_ids, blob_idx_mask, blob_idx_out1, shape.y, shape.x);
+    }
 	
 	// set input of ailia_text_robertamodel
 	status = ailiaSetInputBlobData(ailia_text_robertamodel, &ary_input_ids[0], ary_input_ids.size() * sizeof(TYPE_IDS), blob_idx_ids);
@@ -411,8 +429,9 @@ std::vector<float> text_embedding(AILIANetwork *ailia_text_robertamodel, AILIANe
         PRINT_ERR("ailiaGetBlobShape failed %d\n", status);
         return features;
     }
-	PRINT_OUT("text_projection input=%d output=%d outshape=[%d,%d]\n", blob_idx_x, blob_idx_text_embed, shape.y, shape.x);
-	//print_net(ailia_text_projection);
+    if(debug){
+        PRINT_OUT("text_projection input=%d output=%d outshape=[%d,%d]\n", blob_idx_x, blob_idx_text_embed, shape.y, shape.x);
+    }
 
 	// set input of ailia_text_projection
 	status = ailiaSetInputBlobData(ailia_text_projection, &branch[0], branch.size() * sizeof(float), blob_idx_x);
@@ -444,7 +463,7 @@ std::vector<float> text_embedding(AILIANetwork *ailia_text_robertamodel, AILIANe
 // Main functions
 // ======================
 
-int get_env_id(void)
+static int get_env_id(void)
 {
     unsigned int env_count;
 	int status = ailiaGetEnvironmentCount(&env_count);
@@ -476,7 +495,7 @@ int get_env_id(void)
     return env_id;
 }
 
-int initialize_ailia(AILIANetwork **ailia, int env_id, std::string model_file, std::string weight_file){
+static int initialize_ailia(AILIANetwork **ailia, int env_id, std::string model_file, std::string weight_file){
     int status = ailiaCreate(ailia, env_id, AILIA_MULTITHREAD_AUTO);
     if (status != AILIA_STATUS_SUCCESS) {
         PRINT_ERR("ailiaCreate failed %d\n", status);
@@ -514,7 +533,6 @@ int main(int argc, char **argv)
     if (status != AILIA_STATUS_SUCCESS) {
         return -1;
     }
-#if 1
     AILIANetwork *ailia_text_robertamodel;
     status = initialize_ailia(&ailia_text_robertamodel, env_id, model_text_robertamodel, weight_text_robertamodel);
     if (status != AILIA_STATUS_SUCCESS) {
@@ -574,11 +592,10 @@ int main(int argc, char **argv)
     unsigned int dim_text_feature = 0;
     std::vector<float> text_features = text_embedding(ailia_text_robertamodel, ailia_text_projection, 
 		ary_input_ids, ary_attention_mask, &dim_text_feature, num_texts, token_length);
-#endif
+
     // audio embedding
     PRINT_OUT("Audio embedding...\n");
     std::vector<float> audio_feature = audio_embedding(ailia_audio, input_wav_path);
-#if 1
     if(dim_text_feature > 0 && dim_text_feature == audio_feature.size() && text_features.size() > 0){
         PRINT_OUT("===== cosine similality between text and audio =====\n");
         PRINT_OUT("audio: %s\n", input_wav_path.c_str());
@@ -594,6 +611,5 @@ int main(int argc, char **argv)
 	ailiaDestroy(ailia_text_projection);
 
     PRINT_OUT("Program finished successfully.\n");
-#endif
     return status;
 }
