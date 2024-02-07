@@ -2,8 +2,7 @@
 setlocal enabledelayedexpansion
 cd %~dp0
 
-set MODEL=fugumt
-set EXE_FILE=fugumt-ja-en
+set MODEL=fugumt-ja-en
 set FILE1=encoder_model.onnx
 set FILE2=encoder_model.onnx.prototxt
 set FILE3=decoder_model.onnx
@@ -53,4 +52,4 @@ if not "%1" == "-h" if not "%1" == "--help" (
     echo SPM files are prepared^^!
 )
 rem execute
-.\%EXE_FILE%.exe %*
+.\%MODEL%.exe %*

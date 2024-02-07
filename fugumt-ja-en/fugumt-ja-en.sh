@@ -1,7 +1,6 @@
 #!/bin/bash
 
-MODEL="fugumt"
-EXE_FILE="fugumt-ja-en"
+MODEL="fugumt-ja-en"
 FILE1='encoder_model.onnx'
 FILE2='encoder_model.onnx.prototxt'
 FILE3='decoder_model.onnx'
@@ -50,4 +49,4 @@ if [ ! "$1" = "-h" ] && [ ! "$1" = "--help" ]; then
     echo "SPM files are prepared!"
 fi
 #execute
-./${EXE_FILE} $*
+./${MODEL} $*
