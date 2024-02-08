@@ -22,7 +22,6 @@ if not "%1" == "-h" if not "%1" == "--help" (
         echo Downloading onnx file... ^(save path: %FILE2%^)
         curl https://storage.googleapis.com/ailia-models/%MODEL%/%FILE2% -o %FILE2%
     )
-    echo ONNX file and Prototxt file are prepared^^!
 )
 if not "%1" == "-h" if not "%1" == "--help" (
     if not exist %FILE3% (
@@ -35,14 +34,13 @@ if not "%1" == "-h" if not "%1" == "--help" (
         echo Downloading spm file... ^(save path: %FILE4%^)
         curl https://storage.googleapis.com/ailia-models/%MODEL%/%FILE4% -o %FILE4%
     )
-    echo SPM files are prepared^^!
+    echo ONNX file and Prototxt file are prepared^^!
 )
 if not "%1" == "-h" if not "%1" == "--help" (
     if not exist %FILE5% (
         echo Downloading spm file... ^(save path: %FILE5%^)
         curl https://storage.googleapis.com/ailia-models/%MODEL%/%FILE5% -o %FILE5%
     )
-    echo SPM files are prepared^^!
 )
 if not "%1" == "-h" if not "%1" == "--help" (
     if not exist %FILE6% (

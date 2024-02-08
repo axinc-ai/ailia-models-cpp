@@ -20,7 +20,6 @@ if [ ! "$1" = "-h" ] && [ ! "$1" = "--help" ]; then
         echo "Downloading onnx file... save path: ${FILE2}"
         curl https://storage.googleapis.com/ailia-models/${MODEL}/${FILE2} -o ${FILE2}
     fi
-    echo "ONNX file and Prototxt file are prepared!"
 fi
 if [ ! "$1" = "-h" ] && [ ! "$1" = "--help" ]; then
     if [ ! -e ${FILE3} ]; then
@@ -33,7 +32,7 @@ if [ ! "$1" = "-h" ] && [ ! "$1" = "--help" ]; then
         echo "Downloading spm file... save path: ${FILE4}"
         curl https://storage.googleapis.com/ailia-models/${MODEL}/${FILE4} -o ${FILE4}
     fi
-    echo "SPM files are prepared!"
+    echo "ONNX file and Prototxt file are prepared!"
 fi
 if [ ! "$1" = "-h" ] && [ ! "$1" = "--help" ]; then
     if [ ! -e ${FILE5} ]; then
