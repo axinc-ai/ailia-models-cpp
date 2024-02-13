@@ -82,6 +82,43 @@ static std::vector<float> get_mel_ailia(std::vector<float>& audio_data, const AU
     return mel_t;
 }
 
+static void resize_bilinear(float* dst, int dh, int dw, float* src, int sh, int sw)
+{
+    float hr = (float)sh / (float)dh;
+    float wr = (float)sw / (float)dw;
+    float fy = 0;
+    for(int y=0; y<dh; y++){
+        int y0 = std::min<int>((int)floorf(fy), sh - 1);
+        int y1 = std::min<int>((int)ceilf(fy), sh - 1);
+        float yw = 1.f;
+        if(y0 != y1){
+            yw = fy - y0;
+        }
+        float fx = 0;
+        for(int x=0; x<dw; x++){
+            int x0 = std::min<int>((int)floorf(fx), sw - 1);
+            int x1 = std::min<int>((int)ceilf(fx), sw - 1);
+            float xw = 1.f;
+            if(x0 != x1){
+                xw = fx - x0;
+            }
+            float v00 = src[sw * y0 + x0];
+            float v01 = src[sw * y0 + x1];
+            float v10 = src[sw * y1 + x0];
+            float v11 = src[sw * y1 + x1];
+            float res = 0;
+            res += v00 * (1.f - yw) * (1.f - xw);
+            res += v01 * (1.f - yw) * (xw);
+            res += v10 * (yw) * (1.f - xw);
+            res += v11 * (yw) * (xw);
+            *dst++ = res;
+            
+            fx += wr;
+        }
+        fy += hr;
+    }
+}
+
 std::vector<float> get_audio_features(std::vector<float>& audio_data, unsigned int max_len, 
     std::string data_truncating, std::string data_filling, const AUDIO_CONFIG& audio_cfg, bool* plonger)
 {
@@ -128,8 +165,8 @@ std::vector<float> get_audio_features(std::vector<float>& audio_data, unsigned i
                     }
                     memcpy(&mel_fusion[i * frame_size], &mel[choice * mel_n], frame_size * sizeof(float));
                 }
-                // shrink the mel : mel_shrink_numpy = np.resize(mel[None], (chunk_frames, 64))
-                memcpy(&mel_fusion[3 * frame_size], &mel[0], frame_size * sizeof(float));
+                // shrink the mel
+                resize_bilinear(&mel_fusion[3 * frame_size], chunk_frames, mel_n, &mel[0], frame_n, mel_n);
 
                 if(plonger) *plonger = true;
             }
