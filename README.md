@@ -124,6 +124,7 @@ We are now converting to C++. Please wait to complete conversion.
 | Name | Detail | Exported From | Supported Ailia Version |
 |:-----------|------------:|:------------:|:------------:|
 |[fugumt-en-ja](/fugumt) | [Fugu-Machine Translator](https://github.com/s-taka/fugumt) | Pytorch | 1.2.9 and later |
+|[fugumt-ja-en](/fugumt-ja-en) | [Fugu-Machine Translator](https://github.com/s-taka/fugumt) | Pytorch | 1.2.10 and later |
 |[bert_maskedlm](/bert_maskedlm) | [huggingface/transformers](https://github.com/huggingface/transformers) | Pytorch | 1.2.5 and later |
 |[sentence_transformers](/sentence_transformers) | [sentence transformers](https://huggingface.co/sentence-transformers/paraphrase-multilingual-mpnet-base-v2) | Pytorch | 1.2.7 and later |
 |[t5_whisper_medical](/t5_whisper_medical) | error correction of medical terms using t5 | Pytorch | 1.2.13 and later | |
