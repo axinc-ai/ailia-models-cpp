@@ -147,7 +147,7 @@ Copy the files located in the folder [ailia Tokenizer]/library/ to the folder ./
 ### Build
 
 ```
-cd fugumt
+cd fugumt-en-ja
 export AILIA_LIBRARY_PATH=../ailia/library
 export AILIA_TOKENIZER_PATH=../ailia_tokenizer/library
 cmake .
@@ -157,7 +157,7 @@ make
 ### Run
 
 ```
-./fugumt.sh
+./fugumt-en-ja.sh
 ```
 
 # Build all samples
