@@ -23,7 +23,7 @@ void transpose(const cv::Mat& simg, cv::Mat& dimg, std::vector<int> swap = {2, 0
         size0 = {simg.size[0], simg.size[1], simg.size[2]};
     }
     std::vector<int> size1 = {size0[swap[0]], size0[swap[1]], size0[swap[2]]};
-    dimg = cv::Mat(size1.size(), &size1[0], simg.type());
+    dimg = cv::Mat(size1.size(), &size1[0], CV_32FC1);
 
     if (simg.elemSize1() == sizeof(char)) {
         char* sdata = (char*)simg.data;
