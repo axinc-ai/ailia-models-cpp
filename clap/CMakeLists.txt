@@ -19,13 +19,9 @@ project(${PROJECT_NAME} CXX)
 include_directories(${INCLUDE_PATH})
 link_directories(${LIBRARY_PATH})
 
-# erase later
-include_directories(../include)
-link_directories(../lib)
-
 add_executable(${PROJECT_NAME} ${SRC_FILES})
 
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_11)
-target_link_libraries(${PROJECT_NAME} ailia ailia_tokenizer)
+target_link_libraries(${PROJECT_NAME} ailia ailia_tokenizer ailia_audio)
 set (CMAKE_INSTALL_PREFIX ${CMAKE_SOURCE_DIR})
 install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION .)
