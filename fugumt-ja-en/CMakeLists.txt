@@ -1,6 +1,6 @@
 ﻿cmake_minimum_required(VERSION 3.1)
 
-set (PROJECT_NAME fugumt)
+set (PROJECT_NAME fugumt-ja-en)
 set (SRC_FILES ${PROJECT_NAME}.cpp)
 set (INCLUDE_PATH $ENV{AILIA_LIBRARY_PATH}/include $ENV{AILIA_TOKENIZER_PATH}/include)
 if(WIN32)
