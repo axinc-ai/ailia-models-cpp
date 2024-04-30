@@ -73,6 +73,7 @@ We are now converting to C++. Please wait to complete conversion.
 |:-----------|------------:|:------------:|:------------:|
 | [silero-vad](/silero-vad/) | [Silero VAD](https://github.com/snakers4/silero-vad) | Pytorch | 1.2.15 and later | |
 | [clap](/clap/) | [CLAP](https://github.com/LAION-AI/CLAP) | Pytorch | 1.3.0 and later | |
+| [gpt-sovits](/gpt-sovits/) | [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS) | Pytorch | 1.4.0 and later | |
 
 ## Image classification
 
