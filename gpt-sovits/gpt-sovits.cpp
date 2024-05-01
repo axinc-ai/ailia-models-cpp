@@ -24,7 +24,7 @@
 #include "wave_writer.h"
 
 bool debug = false;
-bool debug_token = true;
+bool debug_token = false;
 
 
 // ======================
@@ -435,11 +435,9 @@ static AILIATensor t2s_forward(AILIATensor ref_seq, AILIATensor text_seq, AILIAT
 			PRINT_OUT("decoder step %d ", idx);
 		}
 
-		//clock_t start = clock();
 		auto start2 = std::chrono::high_resolution_clock::now();
 		forward(net[MODEL_DECODER], decoder_inputs, decoder_outputs);
 		auto end2 = std::chrono::high_resolution_clock::now();
-        //clock_t end = clock();
 
 		decoder_inputs[0] = &decoder_outputs[0]; // y
 		decoder_inputs[1] = &decoder_outputs[1]; // k
@@ -462,8 +460,7 @@ static AILIATensor t2s_forward(AILIATensor ref_seq, AILIATensor text_seq, AILIAT
 		}
 
 		if (benchmark){
-            //PRINT_OUT("\tailia processing time %ld ms\n", ((end-start)*1000)/CLOCKS_PER_SEC);
-            PRINT_OUT("\tailia processing time %ld ms\n",  std::chrono::duration_cast<std::chrono::milliseconds>(end2 - start2).count());
+            PRINT_OUT("ailia processing time %lld ms\n",  std::chrono::duration_cast<std::chrono::milliseconds>(end2 - start2).count());
 		}
 
 		if (stop){
@@ -651,7 +648,12 @@ int main(int argc, char **argv)
 		}
 	}
 
+	auto start2 = std::chrono::high_resolution_clock::now();
 	status = recognize_from_audio(ailia);
+	auto end2 = std::chrono::high_resolution_clock::now();
+	if (benchmark){
+		PRINT_OUT("total processing time %lld ms\n",  std::chrono::duration_cast<std::chrono::milliseconds>(end2 - start2).count());
+	}
 
 	for (int i = 0; i < MODEL_N; i++){
 		ailiaDestroy(ailia[i]);
