@@ -183,7 +183,7 @@ struct AILIATensor{
 	AILIAShape shape;
 };
 
-std::vector<AILIATensor> forward(AILIANetwork *ailia, std::vector<AILIATensor> inputs){
+void forward(AILIANetwork *ailia, std::vector<AILIATensor*> &inputs, std::vector<AILIATensor> &outputs){
 	int status;
 
 	unsigned int input_blob_cnt;
@@ -204,15 +204,15 @@ std::vector<AILIATensor> forward(AILIANetwork *ailia, std::vector<AILIATensor> i
 		}
 
 		if (debug){
-			printf("input blob shape %d %d %d %d dims %d\n",inputs[i].shape.x,inputs[i].shape.y,inputs[i].shape.z,inputs[i].shape.w,inputs[i].shape.dim);
+			printf("input blob shape %d %d %d %d dims %d\n",inputs[i]->shape.x,inputs[i]->shape.y,inputs[i]->shape.z,inputs[i]->shape.w,inputs[i]->shape.dim);
 		}
 
-		status = ailiaSetInputBlobShape(ailia,&inputs[i].shape,input_blob_idx,AILIA_SHAPE_VERSION);
+		status = ailiaSetInputBlobShape(ailia,&inputs[i]->shape,input_blob_idx,AILIA_SHAPE_VERSION);
 		if(status!=AILIA_STATUS_SUCCESS){
 			setErrorDetail("ailiaSetInputBlobShape",ailiaGetErrorDetail(ailia));
 		}
 
-		status = ailiaSetInputBlobData(ailia, &(inputs[i].data)[0], inputs[i].data.size() * sizeof(float), input_blob_idx);
+		status = ailiaSetInputBlobData(ailia, &(inputs[i]->data)[0], inputs[i]->data.size() * sizeof(float), input_blob_idx);
 		if (status != AILIA_STATUS_SUCCESS) {
 			setErrorDetail("ailiaSetInputBlobData",ailiaGetErrorDetail(ailia));
 		}
@@ -223,7 +223,6 @@ std::vector<AILIATensor> forward(AILIANetwork *ailia, std::vector<AILIATensor> i
 		setErrorDetail("ailiaUpdate",ailiaGetErrorDetail(ailia));
 	}
 
-	std::vector<AILIATensor> outputs;
 	unsigned int output_blob_cnt;
 	status = ailiaGetOutputBlobCount(ailia, &output_blob_cnt);
 	if (status != AILIA_STATUS_SUCCESS) {
@@ -247,19 +246,23 @@ std::vector<AILIATensor> forward(AILIANetwork *ailia, std::vector<AILIATensor> i
 			printf("output_blob_shape %d %d %d %d dims %d\n",output_blob_shape.x,output_blob_shape.y,output_blob_shape.z,output_blob_shape.w,output_blob_shape.dim);
 		}
 
-		AILIATensor tensor;
-		tensor.data.resize(output_blob_shape.x*output_blob_shape.y*output_blob_shape.z*output_blob_shape.w);
-		tensor.shape = output_blob_shape;
+		if (outputs.size() <= i){
+			AILIATensor tensor;
+			outputs.push_back(tensor);
+		}
+		
+		AILIATensor &ref_tensor = outputs[i];
+		int new_shape = output_blob_shape.x*output_blob_shape.y*output_blob_shape.z*output_blob_shape.w;
+		if (new_shape != ref_tensor.data.size()){
+			ref_tensor.data.resize(new_shape);
+		}
+		ref_tensor.shape = output_blob_shape;
 
-		status = ailiaGetBlobData(ailia, &tensor.data[0], tensor.data.size() * sizeof(float), output_blob_idx);
+		status = ailiaGetBlobData(ailia, &ref_tensor.data[0], ref_tensor.data.size() * sizeof(float), output_blob_idx);
 		if (status != AILIA_STATUS_SUCCESS) {
 			setErrorDetail("ailiaGetBlobData",ailiaGetErrorDetail(ailia));
 		}
-
-		outputs.push_back(tensor);
 	}
-
-	return outputs;
 }
 
 static std::vector<float> resample(std::vector<float> pcm, int targetSampleRate, int sampleRate, int nChannels)
@@ -311,7 +314,7 @@ static std::vector<float> cleaned_text_to_sequence(const char ** data, int size)
 
 static AILIATensor ssl_forward(std::vector<float> ref_audio_16k, AILIANetwork* net)
 {
-	std::vector<AILIATensor> inputs;
+	std::vector<AILIATensor*> inputs;
 	AILIATensor tensor;
 	tensor.data = ref_audio_16k;
 	tensor.shape.x = ref_audio_16k.size();
@@ -319,8 +322,9 @@ static AILIATensor ssl_forward(std::vector<float> ref_audio_16k, AILIANetwork* n
 	tensor.shape.z = 1;
 	tensor.shape.w = 1;
 	tensor.shape.dim = 2;
-	inputs.push_back(tensor);
-	std::vector<AILIATensor> outputs = forward(net, inputs);
+	inputs.push_back(&tensor);
+	std::vector<AILIATensor> outputs;
+	forward(net, inputs, outputs);
 	return outputs[0];
 }
 
@@ -341,23 +345,20 @@ static AILIATensor t2s_forward(AILIATensor ref_seq, AILIATensor text_seq, AILIAT
 	int max_sec = 54;
 	int early_stop_num = hz * max_sec;
 
-	std::vector<AILIATensor> encoder_inputs;
+	std::vector<AILIATensor*> encoder_inputs;
 
-	encoder_inputs.push_back(ref_seq);
-	encoder_inputs.push_back(text_seq);
-	encoder_inputs.push_back(ref_bert);
-	encoder_inputs.push_back(text_bert);
-	encoder_inputs.push_back(ssl_content);
+	encoder_inputs.push_back(&ref_seq);
+	encoder_inputs.push_back(&text_seq);
+	encoder_inputs.push_back(&ref_bert);
+	encoder_inputs.push_back(&text_bert);
+	encoder_inputs.push_back(&ssl_content);
 
 	if (debug_token){
 		PRINT_OUT("encoder\n");
 	}
 
-	std::vector<AILIATensor> encoder_outputs = forward(net[MODEL_ENCODER], encoder_inputs);
-	AILIATensor x = encoder_outputs[0];
-	AILIATensor prompts = encoder_outputs[1];
-
-	int prefix_len = prompts.shape.x;
+	std::vector<AILIATensor> encoder_outputs;
+	forward(net[MODEL_ENCODER], encoder_inputs, encoder_outputs);
 
 	AILIATensor top_k;
 	top_k.data = std::vector<float>(1);
@@ -395,61 +396,52 @@ static AILIATensor t2s_forward(AILIATensor ref_seq, AILIATensor text_seq, AILIAT
 	repetition_penalty.shape.w = 1;
 	repetition_penalty.shape.dim = 1;
 
-	std::vector<AILIATensor> fs_decoder_inputs;
-	fs_decoder_inputs.push_back(x);
-	fs_decoder_inputs.push_back(prompts);
-	fs_decoder_inputs.push_back(top_k);
-	fs_decoder_inputs.push_back(top_p);
-	fs_decoder_inputs.push_back(temperature);
-	fs_decoder_inputs.push_back(repetition_penalty);
+	std::vector<AILIATensor*> fs_decoder_inputs;
+	fs_decoder_inputs.push_back(&encoder_outputs[0]); // x
+	fs_decoder_inputs.push_back(&encoder_outputs[1]); // prompts
+	fs_decoder_inputs.push_back(&top_k);
+	fs_decoder_inputs.push_back(&top_p);
+	fs_decoder_inputs.push_back(&temperature);
+	fs_decoder_inputs.push_back(&repetition_penalty);
+
+	int prefix_len = encoder_outputs[1].shape.x;
 
 	if (debug_token){
 		PRINT_OUT("fs_decoder\n");
 	}
 
-	std::vector<AILIATensor> fs_decoder_outputs = forward(net[MODEL_FS_DECODER], fs_decoder_inputs);
-	AILIATensor y = fs_decoder_outputs[0];
-	AILIATensor k = fs_decoder_outputs[1];
-	AILIATensor v = fs_decoder_outputs[2];
-	AILIATensor y_emb = fs_decoder_outputs[3];
-	AILIATensor x_example = fs_decoder_outputs[4];
+	std::vector<AILIATensor> fs_decoder_outputs;
+	forward(net[MODEL_FS_DECODER], fs_decoder_inputs, fs_decoder_outputs);
+
+	std::vector<AILIATensor*> decoder_inputs;
+	decoder_inputs.push_back(&fs_decoder_outputs[0]); // y
+	decoder_inputs.push_back(&fs_decoder_outputs[1]); // k
+	decoder_inputs.push_back(&fs_decoder_outputs[2]); // v
+	decoder_inputs.push_back(&fs_decoder_outputs[3]); // y_emb
+	decoder_inputs.push_back(&fs_decoder_outputs[4]); // x_example
+	decoder_inputs.push_back(&top_k);
+	decoder_inputs.push_back(&top_p);
+	decoder_inputs.push_back(&temperature);
+	decoder_inputs.push_back(&repetition_penalty);
+
+	std::vector<AILIATensor> decoder_outputs;
 
 	const int EOS = 1024;
 	int idx = 1;
+	AILIATensor y = fs_decoder_outputs[0]; // output
 	for (; idx < 1500; idx++){
 		if (debug_token){
 			PRINT_OUT("decoder step %d ", idx);
 		}
 
-		std::vector<AILIATensor> decoder_inputs;
-		decoder_inputs.push_back(y);
-		decoder_inputs.push_back(k);
-		decoder_inputs.push_back(v);
-		decoder_inputs.push_back(y_emb);
-		decoder_inputs.push_back(x_example);
-		decoder_inputs.push_back(top_k);
-		decoder_inputs.push_back(top_p);
-		decoder_inputs.push_back(temperature);
-		decoder_inputs.push_back(repetition_penalty);
-
-		if (false){
-			PRINT_OUT("\n");
-			PRINT_OUT("y bytes %d\n", y.data.size());
-			PRINT_OUT("k bytes %d\n", k.data.size());
-			PRINT_OUT("v bytes %d\n", v.data.size());
-			PRINT_OUT("y_emb bytes %d\n", y_emb.data.size());
-			PRINT_OUT("x_example bytes %d\n", x_example.data.size());
-			PRINT_OUT("\n");
-		}
-		
 		clock_t start = clock();
-		std::vector<AILIATensor> decoder_outputs = forward(net[MODEL_DECODER], decoder_inputs);
+		forward(net[MODEL_DECODER], decoder_inputs, decoder_outputs);
         clock_t end = clock();
 
-		y = decoder_outputs[0];
-		k = decoder_outputs[1];
-		v = decoder_outputs[2];
-		y_emb = decoder_outputs[3];
+		decoder_inputs[0] = &decoder_outputs[0]; // y
+		decoder_inputs[1] = &decoder_outputs[1]; // k
+		decoder_inputs[2] = &decoder_outputs[2]; // v
+		decoder_inputs[3] = &decoder_outputs[3]; // y_emb
 		AILIATensor logits = decoder_outputs[4];
 		AILIATensor samples = decoder_outputs[5];
 
@@ -457,12 +449,13 @@ static AILIATensor t2s_forward(AILIATensor ref_seq, AILIATensor text_seq, AILIAT
 		if (early_stop_num != -1 && y.shape.x - prefix_len > early_stop_num){
 			stop = true;
 		}
-		if (argmax(logits) == EOS || samples.data[0] == EOS){
+		int token = argmax(logits);
+		if (token == EOS || samples.data[0] == EOS){
 			stop = true;
 		}
 
 		if (debug_token){
-			PRINT_OUT("token %d\n", argmax(logits));
+			PRINT_OUT("token %d\n", token);
 		}
 
 		if (benchmark){
@@ -470,29 +463,28 @@ static AILIATensor t2s_forward(AILIATensor ref_seq, AILIATensor text_seq, AILIAT
 		}
 
 		if (stop){
+			y = decoder_outputs[0];
 			break;
 		}
 	}
 
-	AILIATensor y2;
-	for (int i = y.data.size() - idx; i < y.data.size() - 1; i++){
-		y2.data.push_back(y.data[i]);
-	}
-	y2.shape.x = y2.data.size();
-	y2.shape.y = 1;
-	y2.shape.z = 1;
-	y2.shape.w = 1;
-	y2.shape.dim = 3;
+	y.data = std::vector<float>(y.data.begin() + y.data.size() - idx, y.data.begin() + y.data.size() - 1); // dont store prefix and last eos element
+	y.shape.x = y.data.size();
+	y.shape.y = 1;
+	y.shape.z = 1;
+	y.shape.w = 1;
+	y.shape.dim = 3;
 
-	return y2;
+	return y;
 }
 
 AILIATensor vits_forward(AILIATensor text_seq, AILIATensor pred_semantic, AILIATensor ref_audio, AILIANetwork *net){
-	std::vector<AILIATensor> vits_inputs;
-	vits_inputs.push_back(text_seq);
-	vits_inputs.push_back(pred_semantic);
-	vits_inputs.push_back(ref_audio);
-	std::vector<AILIATensor> vits_outputs = forward(net, vits_inputs);
+	std::vector<AILIATensor*> vits_inputs;
+	vits_inputs.push_back(&text_seq);
+	vits_inputs.push_back(&pred_semantic);
+	vits_inputs.push_back(&ref_audio);
+	std::vector<AILIATensor> vits_outputs;
+	forward(net, vits_inputs, vits_outputs);
 	return vits_outputs[0];
 }
 
@@ -630,7 +622,7 @@ int main(int argc, char **argv)
 			return -1;
 		}
 
-		status = ailiaSetMemoryMode(ailia[i], AILIA_MEMORY_OPTIMAIZE_DEFAULT | AILIA_MEMORY_REDUCE_INTERSTAGE);
+		status = ailiaSetMemoryMode(ailia[i], AILIA_MEMORY_OPTIMAIZE_DEFAULT | AILIA_MEMORY_REUSE_INTERSTAGE);
 		if (status != AILIA_STATUS_SUCCESS) {
 			PRINT_ERR("ailiaSetMemoryMode failed %d\n", status);
 			ailiaDestroy(ailia[i]);
