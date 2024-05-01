@@ -21,7 +21,7 @@
 #include "ailia_audio.h"
 #include "wave_reader.h"
 
-bool debug = false;
+bool debug = true;
 
 
 // ======================
@@ -43,6 +43,8 @@ bool debug = false;
 
 #define MODEL_N 5
 
+#define MODEL_SSL 0
+
 const char *MODEL_NAME[5] = {"nahida_cnhubert.onnx", "nahida_t2s_encoder.onnx", "nahida_t2s_fsdec.onnx", "nahida_t2s_sdec.onnx", "nahida_vits.onnx"};
 
 static bool benchmark  = false;
@@ -50,13 +52,16 @@ static int args_env_id = -1;
 
 std::string input_text = "reference_audio_captured_by_ax.wav";
 
-const char * REF_PHONES[37] = {"m", "i", "z", "u", "o", "m", "a", "r", "e", "e", "sh", "i", "a", "k", "a", "r", "a", "k", "a", "w", "a", "n", "a", "k", "U", "t", "e", "w", "a", "n", "a", "r", "a", "n", "a", "i", "."};
-const char *TEXT_PHONES[72] = {"e", "i", "e", "cl", "k", "U", "s", "u", "k", "a", "b", "u", "sh", "I", "k", "i", "g", "a", "i", "sh", "a", "d", "e", "w", "a", "e", "e", "a", "i", "n", "o", "j", "i", "ts", "u", "y", "o", "o", "k", "a", "n", "o", "t", "a", "m", "e", "n", "o", "g", "i", "j", "u", "ts", "u", "o", "k", "a", "i", "h", "a", "ts", "u", "sh", "I", "t", "e", "i", "m", "a", "s", "U", "."};
+#define REF_PHONES_SIZE 37
+#define TEXT_PHONES_SIZE 72
+
+const char * REF_PHONES[REF_PHONES_SIZE] = {"m", "i", "z", "u", "o", "m", "a", "r", "e", "e", "sh", "i", "a", "k", "a", "r", "a", "k", "a", "w", "a", "n", "a", "k", "U", "t", "e", "w", "a", "n", "a", "r", "a", "n", "a", "i", "."};
+const char *TEXT_PHONES[TEXT_PHONES_SIZE] = {"e", "i", "e", "cl", "k", "U", "s", "u", "k", "a", "b", "u", "sh", "I", "k", "i", "g", "a", "i", "sh", "a", "d", "e", "w", "a", "e", "e", "a", "i", "n", "o", "j", "i", "ts", "u", "y", "o", "o", "k", "a", "n", "o", "t", "a", "m", "e", "n", "o", "g", "i", "j", "u", "ts", "u", "o", "k", "a", "i", "h", "a", "ts", "u", "sh", "I", "t", "e", "i", "m", "a", "s", "U", "."};
 
 /*
 [[225 160 319 254 229 225  96 248 129 129 251 160  96 222  96 248  96 222
    96 316  96 227  96 222  82 252 129 316  96 227  96 248  96 227  96 160
-    3]]
+	3]]
 */
 
 /*
@@ -158,149 +163,158 @@ static int argument_parser(int argc, char **argv)
 	return AILIA_STATUS_SUCCESS;
 }
 
-
 // ======================
 // Main functions
 // ======================
 
 void setErrorDetail(const char *func, const char *detail){
 	PRINT_ERR("Error %s Detail %s\n", func, detail);
+	throw(func);
 }
 
-int forward(AILIANetwork *ailia, std::vector<float> *inputs[NUM_INPUTS], std::vector<float> *outputs[NUM_OUTPUTS]){
+struct AILIATensor{
+	std::vector<float> data;
+	AILIAShape shape;
+};
+
+std::vector<AILIATensor> forward(AILIANetwork *ailia, std::vector<AILIATensor> inputs){
 	int status;
 
-	for (int i = 0; i < NUM_INPUTS; i++){
+	unsigned int input_blob_cnt;
+	status = ailiaGetInputBlobCount(ailia, &input_blob_cnt);
+	if (status != AILIA_STATUS_SUCCESS) {
+		setErrorDetail("ailiaGetInputBlobCount",ailiaGetErrorDetail(ailia));
+	}
+
+	if (input_blob_cnt != inputs.size()){
+		setErrorDetail("input blob cnt and input tensor size must be same", "");
+	}
+
+	for (int i = 0; i < inputs.size(); i++){
 		unsigned int input_blob_idx = 0;
 		status = ailiaGetBlobIndexByInputIndex(ailia, &input_blob_idx, i);
 		if (status != AILIA_STATUS_SUCCESS) {
 			setErrorDetail("ailiaGetBlobIndexByInputIndex", ailiaGetErrorDetail(ailia));
-			return status;
 		}
 
-		AILIAShape sequence_shape;
-		int batch_size = 1;
-		if ( i == 0 ){
-			sequence_shape.x=inputs[i]->size() / batch_size;
-			sequence_shape.y=batch_size;
-			sequence_shape.z=1;
-			sequence_shape.w=1;
-			sequence_shape.dim=2;
-		}
-		if ( i == 1 ){
-			sequence_shape.x=inputs[i]->size();
-			sequence_shape.y=1;
-			sequence_shape.z=1;
-			sequence_shape.w=1;
-			sequence_shape.dim=1;
-		}
-		if ( i == 2 || i == 3){
-			sequence_shape.x=inputs[i]->size() / batch_size / 2;
-			sequence_shape.y=batch_size;
-			sequence_shape.z=2;
-			sequence_shape.w=1;
-			sequence_shape.dim=3;
-		}
 		if (debug){
-			printf("input blob shape %d %d %d %d dims %d\n",sequence_shape.x,sequence_shape.y,sequence_shape.z,sequence_shape.w,sequence_shape.dim);
+			printf("input blob shape %d %d %d %d dims %d\n",inputs[i].shape.x,inputs[i].shape.y,inputs[i].shape.z,inputs[i].shape.w,inputs[i].shape.dim);
 		}
 
-		status = ailiaSetInputBlobShape(ailia,&sequence_shape,input_blob_idx,AILIA_SHAPE_VERSION);
+		status = ailiaSetInputBlobShape(ailia,&inputs[i].shape,input_blob_idx,AILIA_SHAPE_VERSION);
 		if(status!=AILIA_STATUS_SUCCESS){
 			setErrorDetail("ailiaSetInputBlobShape",ailiaGetErrorDetail(ailia));
-			return status;
 		}
 
-		if (inputs[i]->size() > 0){
-			status = ailiaSetInputBlobData(ailia, &(*inputs[i])[0], inputs[i]->size() * sizeof(float), input_blob_idx);
-			if (status != AILIA_STATUS_SUCCESS) {
-				setErrorDetail("ailiaSetInputBlobData",ailiaGetErrorDetail(ailia));
-				return status;
-			}
+		status = ailiaSetInputBlobData(ailia, &(inputs[i].data)[0], inputs[i].data.size() * sizeof(float), input_blob_idx);
+		if (status != AILIA_STATUS_SUCCESS) {
+			setErrorDetail("ailiaSetInputBlobData",ailiaGetErrorDetail(ailia));
 		}
 	}
 
 	status = ailiaUpdate(ailia);
 	if (status != AILIA_STATUS_SUCCESS) {
 		setErrorDetail("ailiaUpdate",ailiaGetErrorDetail(ailia));
-		return status;
 	}
 
-	for (int i = 0; i < NUM_OUTPUTS; i++){
+	std::vector<AILIATensor> outputs;
+	unsigned int output_blob_cnt;
+	status = ailiaGetOutputBlobCount(ailia, &output_blob_cnt);
+	if (status != AILIA_STATUS_SUCCESS) {
+		setErrorDetail("ailiaGetOutputBlobCount",ailiaGetErrorDetail(ailia));
+	}
+
+	for (int i = 0; i < output_blob_cnt; i++){
 		unsigned int output_blob_idx = 0;
 		status = ailiaGetBlobIndexByOutputIndex(ailia, &output_blob_idx, i);
 		if (status != AILIA_STATUS_SUCCESS) {
 			setErrorDetail("ailiaGetBlobIndexByInputIndex",ailiaGetErrorDetail(ailia));
-			return status;
 		}
 
 		AILIAShape output_blob_shape;
 		status=ailiaGetBlobShape(ailia,&output_blob_shape,output_blob_idx,AILIA_SHAPE_VERSION);
 		if(status!=AILIA_STATUS_SUCCESS){
 			setErrorDetail("ailiaGetBlobShape", ailiaGetErrorDetail(ailia));
-			return status;
 		}
 
 		if (debug){
 			printf("output_blob_shape %d %d %d %d dims %d\n",output_blob_shape.x,output_blob_shape.y,output_blob_shape.z,output_blob_shape.w,output_blob_shape.dim);
 		}
 
-		(*outputs[i]).resize(output_blob_shape.x*output_blob_shape.y*output_blob_shape.z*output_blob_shape.w);
+		AILIATensor tensor;
+		tensor.data.resize(output_blob_shape.x*output_blob_shape.y*output_blob_shape.z*output_blob_shape.w);
 
-		status =ailiaGetBlobData(ailia, &(*outputs[i])[0], outputs[i]->size() * sizeof(float), output_blob_idx);
+		status = ailiaGetBlobData(ailia, &tensor.data[0], tensor.data.size() * sizeof(float), output_blob_idx);
 		if (status != AILIA_STATUS_SUCCESS) {
 			setErrorDetail("ailiaGetBlobData",ailiaGetErrorDetail(ailia));
-			return status;
 		}
+
+		outputs.push_back(tensor);
 	}
 
-	return AILIA_STATUS_SUCCESS;
+	return outputs;
 }
 
-std::vector<float> calc_vad(AILIANetwork* net, std::vector<float> wave, int sampleRate, int nChannels, int nSamples)
+static std::vector<float> resample(std::vector<float> pcm, int targetSampleRate, int sampleRate, int nChannels)
 {
-	int batch = 1;
-	int sequence = 1536;
-
-	std::vector<float> input(batch * sequence);
-	std::vector<float> sr(1);
-	std::vector<float> h(2 * batch * 64);
-	std::vector<float> c(2 * batch * 64);
-
-	std::vector<float> conf;
-
-	for (int s = 0; s < nSamples; s+=sequence){
-		for (int i = 0; i < input.size(); i++){
-			if (s + i < nSamples){
-				input[i] = wave[s + i];
-			}else{
-				input[i] = 0;
-			}
+	if (nChannels == 2){
+		for (int i = 0; i < pcm.size() / 2; i++){
+			pcm[i] = (pcm[i*2] + pcm[i*2+1])/2;
 		}
-		sr[0] = sampleRate;
-		if (debug){
-			PRINT_OUT("\n");
-		}
-
-		std::vector<float> *inputs[NUM_INPUTS];
-		inputs[0] = &input;
-		inputs[1] = &sr;
-		inputs[2] = &h;
-		inputs[3] = &c;
-
-		std::vector<float> output(batch);
-		
-		std::vector<float> *outputs[NUM_OUTPUTS];
-		outputs[0] = &output;
-		outputs[1] = &h;
-		outputs[2] = &c;
-
-		forward(net, inputs, outputs);
-
-		conf.push_back(output[0]);
+		pcm.resize(pcm.size() / 2);
 	}
 
-	return conf;
+	if(sampleRate != targetSampleRate){
+		int dst_n = 0;
+		int status = ailiaAudioGetResampleLen(&dst_n, targetSampleRate, pcm.size(), sampleRate);
+		if (status != AILIA_STATUS_SUCCESS) {
+			PRINT_ERR("ailiaAudioGetResampleLen failed %d\n", status);
+			throw;
+		}
+		std::vector<float> new_audio_waveform(dst_n);
+		status = ailiaAudioResample(&new_audio_waveform[0], &pcm[0], targetSampleRate, dst_n, sampleRate, pcm.size());
+		if (status != AILIA_STATUS_SUCCESS) {
+			PRINT_ERR("ailiaAudioResample failed %d\n", status);
+			throw;
+		}
+		return new_audio_waveform;
+	}
+
+	return pcm;
+}
+
+static std::vector<int> cleaned_text_to_sequence(const char ** data, int size){
+	std::vector<int> sequence;
+	for (int i = 0; i < size; i++){
+		for (int s = 0; s < SYMBOLS_N; s++){
+			if (strcmp(data[i], SYMBOLS[s]) == 0){
+				if (debug){
+					PRINT_OUT("%d ", s);
+				}
+				sequence.push_back(s);
+				break;
+			}
+		}
+	}
+	if (debug){
+		PRINT_OUT("\n");
+	}
+	return sequence;
+}
+
+static AILIATensor ssl_forward(std::vector<float> ref_audio_16k, AILIANetwork* net)
+{
+	std::vector<AILIATensor> inputs;
+	AILIATensor tensor;
+	tensor.data = ref_audio_16k;
+	tensor.shape.x = ref_audio_16k.size();
+	tensor.shape.y = 1;
+	tensor.shape.z = 1;
+	tensor.shape.w = 1;
+	tensor.shape.dim = 2;
+	inputs.push_back(tensor);
+	std::vector<AILIATensor> outputs = forward(net, inputs);
+	return outputs[0];
 }
 
 static int recognize_from_audio(AILIANetwork* net[MODEL_N])
@@ -314,72 +328,37 @@ static int recognize_from_audio(AILIANetwork* net[MODEL_N])
 		return AILIA_STATUS_ERROR_FILE_API;
 	}
 
+	// get sequence
+	PRINT_OUT("ref_seq\n");
+	std::vector<int> ref_seq = cleaned_text_to_sequence(REF_PHONES, REF_PHONES_SIZE);
+	PRINT_OUT("text_seq\n");
+	std::vector<int> text_seq = cleaned_text_to_sequence(TEXT_PHONES, TEXT_PHONES_SIZE);
+
+	const int BERT_DIM = 1024;
+	std::vector<float> ref_bert(ref_seq.size() * BERT_DIM);
+	std::vector<float> text_bert(text_seq.size() * BERT_DIM);
+
 	// resmaple to 16k and 32k
-	PRINT_OUT("sampleRate %d\n", sampleRate);
+	const int vits_hps_data_sampling_rate = 32000;
+	std::vector<float> zero_wav(vits_hps_data_sampling_rate * 0.3);
+	std::vector<float> wav16k = resample(wave, 16000, sampleRate, nChannels);
+	std::vector<float> ref_audio_16k = wav16k;
+	ref_audio_16k.insert(ref_audio_16k.end(), zero_wav.begin(), zero_wav.end());
+	
+	std::vector<float> wav32k = resample(wave, vits_hps_data_sampling_rate, sampleRate, nChannels);
+
+	// ssl
+	AILIATensor ssl_content = ssl_forward(ref_audio_16k, net[MODEL_SSL]);
 
 	/*
-	gpt = T2SModel(t2s_encoder, t2s_first_decoder, t2s_stage_decoder,)
-    gpt_sovits = GptSoVits(gpt, vits)
-    ssl = SSLModel(ssl)
+	a = gpt_sovits.forward(ref_seq, text_seq, ref_bert, text_bert, wav32k, ssl_content)
 
-    input_audio = args.audio
+	savepath = args.savepath
+	logger.info(f'saved at : {savepath}')
 
-    ref_phones = g2p(args.transcript)
-    ref_seq = np.array([cleaned_text_to_sequence(ref_phones)], dtype=np.int64)
+	soundfile.write(savepath, a, vits_hps_data_sampling_rate)
 
-    text_phones = g2p(args.input)
-    text_seq = np.array([cleaned_text_to_sequence(text_phones)], dtype=np.int64)
-
-    # empty for ja or en
-    ref_bert = np.zeros((ref_seq.shape[1], 1024), dtype=np.float32)
-    text_bert = np.zeros((text_seq.shape[1], 1024), dtype=np.float32)
-    
-    vits_hps_data_sampling_rate = 32000
-
-    zero_wav = np.zeros(
-        int(vits_hps_data_sampling_rate * 0.3),
-        dtype=np.float32,
-    )
-    wav16k, sr = librosa.load(input_audio, sr=16000)
-    wav16k = np.concatenate([wav16k, zero_wav], axis=0)
-    wav16k = wav16k[np.newaxis, :]
-    ref_audio_16k = wav16k # hubertの入力のみpaddingする
-
-    wav32k, sr = librosa.load(input_audio, sr=vits_hps_data_sampling_rate)
-    wav32k = wav32k[np.newaxis, :]
-
-    ssl_content = ssl.forward(ref_audio_16k)
-
-    a = gpt_sovits.forward(ref_seq, text_seq, ref_bert, text_bert, wav32k, ssl_content)
-
-    savepath = args.savepath
-    logger.info(f'saved at : {savepath}')
-
-    soundfile.write(savepath, a, vits_hps_data_sampling_rate)
-
-    logger.info('Script finished successfully.')
-	*/
-
-	/*
-	if (sampleRate != 16000){
-		PRINT_OUT("sampleRate must be 16000 (actual %d)\n", sampleRate);
-		return AILIA_STATUS_INVALID_ARGUMENT;
-	}
-
-	if (nChannels != 1){
-		PRINT_OUT("nChannels must be 1 (actual %d)\n", nChannels);
-		return AILIA_STATUS_INVALID_ARGUMENT;
-	}
-
-	std::vector<float> conf = calc_vad(net, wave, sampleRate, nChannels, nSamples);
-
-	PRINT_OUT("Confidence :\n");
-	for (int i = 0; i < conf.size(); i++){
-		if (i < 10){
-			PRINT_OUT("%f sec %f\n", i * sampleRate / 1536.0f, conf[i]);
-		}
-	}
-	PRINT_OUT("\n");
+	logger.info('Script finished successfully.')
 	*/
 
 	PRINT_OUT("Program finished successfully.\n");
