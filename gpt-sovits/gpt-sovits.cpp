@@ -431,8 +431,20 @@ static AILIATensor t2s_forward(AILIATensor ref_seq, AILIATensor text_seq, AILIAT
 		decoder_inputs.push_back(top_p);
 		decoder_inputs.push_back(temperature);
 		decoder_inputs.push_back(repetition_penalty);
+
+		if (false){
+			PRINT_OUT("\n");
+			PRINT_OUT("y bytes %d\n", y.data.size());
+			PRINT_OUT("k bytes %d\n", k.data.size());
+			PRINT_OUT("v bytes %d\n", v.data.size());
+			PRINT_OUT("y_emb bytes %d\n", y_emb.data.size());
+			PRINT_OUT("x_example bytes %d\n", x_example.data.size());
+			PRINT_OUT("\n");
+		}
 		
+		clock_t start = clock();
 		std::vector<AILIATensor> decoder_outputs = forward(net[MODEL_DECODER], decoder_inputs);
+        clock_t end = clock();
 
 		y = decoder_outputs[0];
 		k = decoder_outputs[1];
@@ -451,6 +463,10 @@ static AILIATensor t2s_forward(AILIATensor ref_seq, AILIATensor text_seq, AILIAT
 
 		if (debug_token){
 			PRINT_OUT("token %d\n", argmax(logits));
+		}
+
+		if (benchmark){
+            PRINT_OUT("\tailia processing time %ld ms\n", ((end-start)*1000)/CLOCKS_PER_SEC);
 		}
 
 		if (stop){
