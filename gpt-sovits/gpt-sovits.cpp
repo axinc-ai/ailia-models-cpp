@@ -466,7 +466,7 @@ static AILIATensor t2s_forward(AILIATensor ref_seq, AILIATensor text_seq, AILIAT
 	y2.shape.y = 1;
 	y2.shape.z = 1;
 	y2.shape.w = 1;
-	y2.shape.dim = 1;
+	y2.shape.dim = 3;
 
 	return y2;
 }
@@ -611,6 +611,13 @@ int main(int argc, char **argv)
 			if (status == AILIA_STATUS_LICENSE_NOT_FOUND || status==AILIA_STATUS_LICENSE_EXPIRED){
 				PRINT_OUT("License file not found or expired : please place license file (AILIA.lic)\n");
 			}
+			return -1;
+		}
+
+		status = ailiaSetMemoryMode(ailia[i], AILIA_MEMORY_OPTIMAIZE_DEFAULT | AILIA_MEMORY_REDUCE_INTERSTAGE);
+		if (status != AILIA_STATUS_SUCCESS) {
+			PRINT_ERR("ailiaSetMemoryMode failed %d\n", status);
+			ailiaDestroy(ailia[i]);
 			return -1;
 		}
 
