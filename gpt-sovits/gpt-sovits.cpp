@@ -317,6 +317,91 @@ static AILIATensor ssl_forward(std::vector<float> ref_audio_16k, AILIANetwork* n
 	return outputs[0];
 }
 
+static std::vector<AILIATensor> t2s_forward(std::vector<int> ref_seq, std::vector<int> text_seq, std::vector<float> ref_bert, std::vector<float> text_bert, AILIATensor ssl_content, AILIANetwork *net[MODEL_N]){
+        int hz = 50;
+        int max_sec = 54;
+        int top_k = 5;
+        int early_stop_num = hz * max_sec;
+
+		std::vector<AILIATensor> outputs;
+		return outputs;
+
+        //int sess_encoder = sess_encoder
+        //int sess_fsdec = sess_fsdec
+        //int sess_sdec = sess_sdec
+/*
+    def forward(self, ref_seq, text_seq, ref_bert, text_bert, ssl_content):
+        early_stop_num = self.early_stop_num
+
+        top_k = np.array([5], dtype=np.int64)
+        top_p = np.array([1.0], dtype=np.float32)
+        temperature = np.array([1.0], dtype=np.float32)
+        repetition_penalty = np.array([1.35], dtype=np.float32)
+
+        EOS = 1024
+
+        if args.benchmark:
+            start = int(round(time.time() * 1000))
+        if args.onnx:
+            x, prompts = self.sess_encoder.run(None, {"ref_seq":ref_seq, "text_seq":text_seq, "ref_bert":ref_bert, "text_bert":text_bert, "ssl_content":ssl_content})
+        else:
+            x, prompts = self.sess_encoder.run({"ref_seq":ref_seq, "text_seq":text_seq, "ref_bert":ref_bert, "text_bert":text_bert, "ssl_content":ssl_content})
+        if args.benchmark:
+            end = int(round(time.time() * 1000))
+            logger.info("\tsencoder processing time {} ms".format(end-start))
+
+        prefix_len = prompts.shape[1]
+
+        if args.benchmark:
+            start = int(round(time.time() * 1000))
+        if args.onnx:
+            y, k, v, y_emb, x_example = self.sess_fsdec.run(None, {"x":x, "prompts":prompts, "top_k":top_k, "top_p":top_p, "temperature":temperature, "repetition_penalty":repetition_penalty})
+        else:
+            y, k, v, y_emb, x_example = self.sess_fsdec.run({"x":x, "prompts":prompts, "top_k":top_k, "top_p":top_p, "temperature":temperature, "repetition_penalty":repetition_penalty})
+        if args.benchmark:
+            end = int(round(time.time() * 1000))
+            logger.info("\tfsdec processing time {} ms".format(end-start))
+
+        stop = False
+        for idx in range(1, 1500):
+            if args.benchmark:
+                start = int(round(time.time() * 1000))
+            if args.onnx:
+                y, k, v, y_emb, logits, samples = self.sess_sdec.run(None, {"iy":y, "ik":k, "iv":v, "iy_emb":y_emb, "ix_example":x_example, "top_k":top_k, "top_p":top_p, "temperature":temperature, "repetition_penalty":repetition_penalty})
+            else:
+                y, k, v, y_emb, logits, samples = self.sess_sdec.run({"iy":y, "ik":k, "iv":v, "iy_emb":y_emb, "ix_example":x_example, "top_k":top_k, "top_p":top_p, "temperature":temperature, "repetition_penalty":repetition_penalty})
+            if args.benchmark:
+                end = int(round(time.time() * 1000))
+                logger.info("\tsdec processing time {} ms".format(end-start))
+            if early_stop_num != -1 and (y.shape[1] - prefix_len) > early_stop_num:
+                stop = True
+            if np.argmax(logits, axis=-1)[0] == EOS or samples[0, 0] == EOS:
+                stop = True
+            if stop:
+                break
+        y[0, -1] = 0
+
+        return y[np.newaxis, :, -idx:-1]
+*/
+}
+
+/*
+        pred_semantic = self.t2s.forward(ref_seq, text_seq, ref_bert, text_bert, ssl_content)
+        if args.benchmark:
+            start = int(round(time.time() * 1000))
+        if args.onnx or args.onnx_vits:
+            audio1 = self.sess.run(None, {
+                "text_seq" : text_seq,
+                "pred_semantic" : pred_semantic, 
+                "ref_audio" : ref_audio
+            })
+        else:
+            audio1 = self.sess.run({
+                "text_seq" : text_seq,
+                "pred_semantic" : pred_semantic, 
+                "ref_audio" : ref_audio
+            })
+			*/
 static int recognize_from_audio(AILIANetwork* net[MODEL_N])
 {
 	int status = AILIA_STATUS_SUCCESS;
@@ -349,6 +434,9 @@ static int recognize_from_audio(AILIANetwork* net[MODEL_N])
 
 	// ssl
 	AILIATensor ssl_content = ssl_forward(ref_audio_16k, net[MODEL_SSL]);
+
+	// t2s
+	std::vector<AILIATensor> t2s_content = t2s_forward(ref_seq, text_seq, ref_bert, text_bert, ssl_content, net);
 
 	/*
 	a = gpt_sovits.forward(ref_seq, text_seq, ref_bert, text_bert, wav32k, ssl_content)
