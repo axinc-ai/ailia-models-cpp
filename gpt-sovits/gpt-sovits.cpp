@@ -20,6 +20,7 @@
 #include "ailia.h"
 #include "ailia_audio.h"
 #include "wave_reader.h"
+#include "wave_writer.h"
 
 bool debug = true;
 
@@ -44,6 +45,10 @@ bool debug = true;
 #define MODEL_N 5
 
 #define MODEL_SSL 0
+#define MODEL_ENCODER 1
+#define MODEL_FS_DECODER 2
+#define MODEL_DECODER 3
+#define MODEL_VITS 4
 
 const char *MODEL_NAME[5] = {"nahida_cnhubert.onnx", "nahida_t2s_encoder.onnx", "nahida_t2s_fsdec.onnx", "nahida_t2s_sdec.onnx", "nahida_vits.onnx"};
 
@@ -283,8 +288,8 @@ static std::vector<float> resample(std::vector<float> pcm, int targetSampleRate,
 	return pcm;
 }
 
-static std::vector<int> cleaned_text_to_sequence(const char ** data, int size){
-	std::vector<int> sequence;
+static std::vector<float> cleaned_text_to_sequence(const char ** data, int size){
+	std::vector<float> sequence;
 	for (int i = 0; i < size; i++){
 		for (int s = 0; s < SYMBOLS_N; s++){
 			if (strcmp(data[i], SYMBOLS[s]) == 0){
@@ -317,91 +322,150 @@ static AILIATensor ssl_forward(std::vector<float> ref_audio_16k, AILIANetwork* n
 	return outputs[0];
 }
 
-static std::vector<AILIATensor> t2s_forward(std::vector<int> ref_seq, std::vector<int> text_seq, std::vector<float> ref_bert, std::vector<float> text_bert, AILIATensor ssl_content, AILIANetwork *net[MODEL_N]){
-        int hz = 50;
-        int max_sec = 54;
-        int top_k = 5;
-        int early_stop_num = hz * max_sec;
-
-		std::vector<AILIATensor> outputs;
-		return outputs;
-
-        //int sess_encoder = sess_encoder
-        //int sess_fsdec = sess_fsdec
-        //int sess_sdec = sess_sdec
-/*
-    def forward(self, ref_seq, text_seq, ref_bert, text_bert, ssl_content):
-        early_stop_num = self.early_stop_num
-
-        top_k = np.array([5], dtype=np.int64)
-        top_p = np.array([1.0], dtype=np.float32)
-        temperature = np.array([1.0], dtype=np.float32)
-        repetition_penalty = np.array([1.35], dtype=np.float32)
-
-        EOS = 1024
-
-        if args.benchmark:
-            start = int(round(time.time() * 1000))
-        if args.onnx:
-            x, prompts = self.sess_encoder.run(None, {"ref_seq":ref_seq, "text_seq":text_seq, "ref_bert":ref_bert, "text_bert":text_bert, "ssl_content":ssl_content})
-        else:
-            x, prompts = self.sess_encoder.run({"ref_seq":ref_seq, "text_seq":text_seq, "ref_bert":ref_bert, "text_bert":text_bert, "ssl_content":ssl_content})
-        if args.benchmark:
-            end = int(round(time.time() * 1000))
-            logger.info("\tsencoder processing time {} ms".format(end-start))
-
-        prefix_len = prompts.shape[1]
-
-        if args.benchmark:
-            start = int(round(time.time() * 1000))
-        if args.onnx:
-            y, k, v, y_emb, x_example = self.sess_fsdec.run(None, {"x":x, "prompts":prompts, "top_k":top_k, "top_p":top_p, "temperature":temperature, "repetition_penalty":repetition_penalty})
-        else:
-            y, k, v, y_emb, x_example = self.sess_fsdec.run({"x":x, "prompts":prompts, "top_k":top_k, "top_p":top_p, "temperature":temperature, "repetition_penalty":repetition_penalty})
-        if args.benchmark:
-            end = int(round(time.time() * 1000))
-            logger.info("\tfsdec processing time {} ms".format(end-start))
-
-        stop = False
-        for idx in range(1, 1500):
-            if args.benchmark:
-                start = int(round(time.time() * 1000))
-            if args.onnx:
-                y, k, v, y_emb, logits, samples = self.sess_sdec.run(None, {"iy":y, "ik":k, "iv":v, "iy_emb":y_emb, "ix_example":x_example, "top_k":top_k, "top_p":top_p, "temperature":temperature, "repetition_penalty":repetition_penalty})
-            else:
-                y, k, v, y_emb, logits, samples = self.sess_sdec.run({"iy":y, "ik":k, "iv":v, "iy_emb":y_emb, "ix_example":x_example, "top_k":top_k, "top_p":top_p, "temperature":temperature, "repetition_penalty":repetition_penalty})
-            if args.benchmark:
-                end = int(round(time.time() * 1000))
-                logger.info("\tsdec processing time {} ms".format(end-start))
-            if early_stop_num != -1 and (y.shape[1] - prefix_len) > early_stop_num:
-                stop = True
-            if np.argmax(logits, axis=-1)[0] == EOS or samples[0, 0] == EOS:
-                stop = True
-            if stop:
-                break
-        y[0, -1] = 0
-
-        return y[np.newaxis, :, -idx:-1]
-*/
+int argmax(AILIATensor logits){
+	float max_p = 0.0f;
+	int max_i = 0;
+	for (int i = 0; i < logits.data.size(); i++){
+		if (logits.data[i] > max_p){
+			max_p = logits.data[i];
+			max_i = i;
+		}
+	}
+	return max_i;
 }
 
-/*
-        pred_semantic = self.t2s.forward(ref_seq, text_seq, ref_bert, text_bert, ssl_content)
-        if args.benchmark:
-            start = int(round(time.time() * 1000))
-        if args.onnx or args.onnx_vits:
-            audio1 = self.sess.run(None, {
-                "text_seq" : text_seq,
-                "pred_semantic" : pred_semantic, 
-                "ref_audio" : ref_audio
-            })
-        else:
-            audio1 = self.sess.run({
-                "text_seq" : text_seq,
-                "pred_semantic" : pred_semantic, 
-                "ref_audio" : ref_audio
-            })
-			*/
+static AILIATensor t2s_forward(AILIATensor ref_seq, AILIATensor text_seq, AILIATensor ref_bert, AILIATensor text_bert, AILIATensor ssl_content, AILIANetwork *net[MODEL_N]){
+	int hz = 50;
+	int max_sec = 54;
+	int early_stop_num = hz * max_sec;
+
+	std::vector<AILIATensor> encoder_inputs;
+
+	encoder_inputs.push_back(ref_seq);
+	encoder_inputs.push_back(text_seq);
+	encoder_inputs.push_back(ref_bert);
+	encoder_inputs.push_back(text_bert);
+	encoder_inputs.push_back(ssl_content);
+
+	std::vector<AILIATensor> encoder_outputs = forward(net[MODEL_ENCODER], encoder_inputs);
+	AILIATensor x = encoder_outputs[0];
+	AILIATensor prompts = encoder_outputs[1];
+
+	int prefix_len = prompts.shape.x;
+
+	AILIATensor top_k;
+	top_k.data = std::vector<float>(1);
+	top_k.data[0] = 5;
+	top_k.shape.x = 1;
+	top_k.shape.y = 1;
+	top_k.shape.z = 1;
+	top_k.shape.w = 1;
+	top_k.shape.dim = 1;
+
+	AILIATensor top_p;
+	top_p.data = std::vector<float>(1);
+	top_p.data[0] = 1.0;
+	top_p.shape.x = 1;
+	top_p.shape.y = 1;
+	top_p.shape.z = 1;
+	top_p.shape.w = 1;
+	top_p.shape.dim = 1;
+
+	AILIATensor temperature;
+	temperature.data = std::vector<float>(1);
+	temperature.data[0] = 1.0;
+	temperature.shape.x = 1;
+	temperature.shape.y = 1;
+	temperature.shape.z = 1;
+	temperature.shape.w = 1;
+	temperature.shape.dim = 1;
+
+	AILIATensor repetition_penalty;
+	repetition_penalty.data = std::vector<float>(1);
+	repetition_penalty.data[0] = 1.35;
+	repetition_penalty.shape.x = 1;
+	repetition_penalty.shape.y = 1;
+	repetition_penalty.shape.z = 1;
+	repetition_penalty.shape.w = 1;
+	repetition_penalty.shape.dim = 1;
+
+	std::vector<AILIATensor> fs_decoder_inputs;
+	fs_decoder_inputs.push_back(x);
+	fs_decoder_inputs.push_back(prompts);
+	fs_decoder_inputs.push_back(top_k);
+	fs_decoder_inputs.push_back(top_p);
+	fs_decoder_inputs.push_back(temperature);
+	fs_decoder_inputs.push_back(repetition_penalty);
+
+	std::vector<AILIATensor> fs_decoder_outputs = forward(net[MODEL_FS_DECODER], fs_decoder_inputs);
+	AILIATensor y = fs_decoder_outputs[0];
+	AILIATensor k = fs_decoder_outputs[1];
+	AILIATensor v = fs_decoder_outputs[2];
+	AILIATensor y_emb = fs_decoder_outputs[3];
+	AILIATensor x_example = fs_decoder_outputs[4];
+
+	const int EOS = 1024;
+	int idx = 1;
+	for (; idx < 1500; idx++){
+		std::vector<AILIATensor> decoder_inputs;
+		decoder_inputs.push_back(y);
+		decoder_inputs.push_back(k);
+		decoder_inputs.push_back(v);
+		decoder_inputs.push_back(y_emb);
+		decoder_inputs.push_back(x_example);
+		decoder_inputs.push_back(top_k);
+		decoder_inputs.push_back(top_p);
+		decoder_inputs.push_back(temperature);
+		decoder_inputs.push_back(repetition_penalty);
+		
+		std::vector<AILIATensor> decoder_outputs = forward(net[MODEL_DECODER], decoder_inputs);
+
+		y = decoder_outputs[0];
+		k = decoder_outputs[1];
+		v = decoder_outputs[2];
+		y_emb = decoder_outputs[3];
+		AILIATensor logits = decoder_outputs[4];
+		AILIATensor samples = decoder_outputs[5];
+
+		bool stop = false;
+		if (early_stop_num != -1 && y.shape.x - prefix_len > early_stop_num){
+			stop = true;
+		}
+		if (argmax(logits) == EOS || samples.data[0] == EOS){
+			stop = true;
+		}
+
+		if (debug){
+			printf("%d ", argmax(logits));
+		}
+
+		if (stop){
+			break;
+		}
+	}
+
+	AILIATensor y2;
+	for (int i = y.data.size() - idx; i < y.data.size() - 1; i++){
+		y2.data.push_back(y.data[i]);
+	}
+	y2.shape.x = y2.data.size();
+	y2.shape.y = 1;
+	y2.shape.z = 1;
+	y2.shape.w = 1;
+	y2.shape.dim = 1;
+
+	return y2;
+}
+
+AILIATensor vits_forward(AILIATensor text_seq, AILIATensor pred_semantic, AILIATensor ref_audio, AILIANetwork *net){
+	std::vector<AILIATensor> vits_inputs;
+	vits_inputs.push_back(text_seq);
+	vits_inputs.push_back(pred_semantic);
+	vits_inputs.push_back(ref_audio);
+	std::vector<AILIATensor> vits_outputs = forward(net, vits_inputs);
+	return vits_outputs[0];
+}
+
 static int recognize_from_audio(AILIANetwork* net[MODEL_N])
 {
 	int status = AILIA_STATUS_SUCCESS;
@@ -415,13 +479,40 @@ static int recognize_from_audio(AILIANetwork* net[MODEL_N])
 
 	// get sequence
 	PRINT_OUT("ref_seq\n");
-	std::vector<int> ref_seq = cleaned_text_to_sequence(REF_PHONES, REF_PHONES_SIZE);
+	AILIATensor ref_seq;
+	ref_seq.data = cleaned_text_to_sequence(REF_PHONES, REF_PHONES_SIZE);
+	ref_seq.shape.x = ref_seq.data.size();
+	ref_seq.shape.y = 1;
+	ref_seq.shape.z = 1;
+	ref_seq.shape.w = 1;
+	ref_seq.shape.dim = 2;
+
 	PRINT_OUT("text_seq\n");
-	std::vector<int> text_seq = cleaned_text_to_sequence(TEXT_PHONES, TEXT_PHONES_SIZE);
+	AILIATensor text_seq;
+	text_seq.data = cleaned_text_to_sequence(TEXT_PHONES, TEXT_PHONES_SIZE);
+	text_seq.shape.x = ref_seq.data.size();
+	text_seq.shape.y = 1;
+	text_seq.shape.z = 1;
+	text_seq.shape.w = 1;
+	text_seq.shape.dim = 2;
 
 	const int BERT_DIM = 1024;
-	std::vector<float> ref_bert(ref_seq.size() * BERT_DIM);
-	std::vector<float> text_bert(text_seq.size() * BERT_DIM);
+	AILIATensor ref_bert;
+	AILIATensor text_bert;
+
+	ref_bert.data = std::vector<float>(ref_seq.data.size() * BERT_DIM);
+	ref_bert.shape.x = BERT_DIM;
+	ref_bert.shape.y = ref_seq.data.size();
+	ref_bert.shape.z = 1;
+	ref_bert.shape.w = 1;
+	ref_bert.shape.dim = 3;
+
+	text_bert.data = std::vector<float>(text_seq.data.size() * BERT_DIM);
+	text_bert.shape.x = BERT_DIM;
+	text_bert.shape.y = text_seq.data.size();
+	text_bert.shape.z = 1;
+	text_bert.shape.w = 1;
+	text_bert.shape.dim = 3;
 
 	// resmaple to 16k and 32k
 	const int vits_hps_data_sampling_rate = 32000;
@@ -429,14 +520,21 @@ static int recognize_from_audio(AILIANetwork* net[MODEL_N])
 	std::vector<float> wav16k = resample(wave, 16000, sampleRate, nChannels);
 	std::vector<float> ref_audio_16k = wav16k;
 	ref_audio_16k.insert(ref_audio_16k.end(), zero_wav.begin(), zero_wav.end());
-	
-	std::vector<float> wav32k = resample(wave, vits_hps_data_sampling_rate, sampleRate, nChannels);
+
+	AILIATensor ref_audio;	
+	ref_audio.data = resample(wave, vits_hps_data_sampling_rate, sampleRate, nChannels);
+	ref_audio.shape.x = ref_audio.data.size();
+	ref_audio.shape.y = 1;
+	ref_bert.shape.z = 1;
+	ref_bert.shape.w = 1;
+	ref_bert.shape.dim = 2;
 
 	// ssl
 	AILIATensor ssl_content = ssl_forward(ref_audio_16k, net[MODEL_SSL]);
 
 	// t2s
-	std::vector<AILIATensor> t2s_content = t2s_forward(ref_seq, text_seq, ref_bert, text_bert, ssl_content, net);
+	AILIATensor pred_semantic = t2s_forward(ref_seq, text_seq, ref_bert, text_bert, ssl_content, net);
+	AILIATensor audio = vits_forward(text_seq, pred_semantic, ref_audio, net[MODEL_VITS]);
 
 	/*
 	a = gpt_sovits.forward(ref_seq, text_seq, ref_bert, text_bert, wav32k, ssl_content)
