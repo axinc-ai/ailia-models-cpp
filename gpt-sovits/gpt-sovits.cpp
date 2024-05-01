@@ -22,7 +22,8 @@
 #include "wave_reader.h"
 #include "wave_writer.h"
 
-bool debug = true;
+bool debug = false;
+bool debug_token = true;
 
 
 // ======================
@@ -248,6 +249,7 @@ std::vector<AILIATensor> forward(AILIANetwork *ailia, std::vector<AILIATensor> i
 
 		AILIATensor tensor;
 		tensor.data.resize(output_blob_shape.x*output_blob_shape.y*output_blob_shape.z*output_blob_shape.w);
+		tensor.shape = output_blob_shape;
 
 		status = ailiaGetBlobData(ailia, &tensor.data[0], tensor.data.size() * sizeof(float), output_blob_idx);
 		if (status != AILIA_STATUS_SUCCESS) {
@@ -293,7 +295,7 @@ static std::vector<float> cleaned_text_to_sequence(const char ** data, int size)
 	for (int i = 0; i < size; i++){
 		for (int s = 0; s < SYMBOLS_N; s++){
 			if (strcmp(data[i], SYMBOLS[s]) == 0){
-				if (debug){
+				if (debug_token){
 					PRINT_OUT("%d ", s);
 				}
 				sequence.push_back(s);
@@ -301,7 +303,7 @@ static std::vector<float> cleaned_text_to_sequence(const char ** data, int size)
 			}
 		}
 	}
-	if (debug){
+	if (debug_token){
 		PRINT_OUT("\n");
 	}
 	return sequence;
@@ -346,6 +348,10 @@ static AILIATensor t2s_forward(AILIATensor ref_seq, AILIATensor text_seq, AILIAT
 	encoder_inputs.push_back(ref_bert);
 	encoder_inputs.push_back(text_bert);
 	encoder_inputs.push_back(ssl_content);
+
+	if (debug_token){
+		PRINT_OUT("encoder\n");
+	}
 
 	std::vector<AILIATensor> encoder_outputs = forward(net[MODEL_ENCODER], encoder_inputs);
 	AILIATensor x = encoder_outputs[0];
@@ -397,6 +403,10 @@ static AILIATensor t2s_forward(AILIATensor ref_seq, AILIATensor text_seq, AILIAT
 	fs_decoder_inputs.push_back(temperature);
 	fs_decoder_inputs.push_back(repetition_penalty);
 
+	if (debug_token){
+		PRINT_OUT("fs_decoder\n");
+	}
+
 	std::vector<AILIATensor> fs_decoder_outputs = forward(net[MODEL_FS_DECODER], fs_decoder_inputs);
 	AILIATensor y = fs_decoder_outputs[0];
 	AILIATensor k = fs_decoder_outputs[1];
@@ -407,6 +417,10 @@ static AILIATensor t2s_forward(AILIATensor ref_seq, AILIATensor text_seq, AILIAT
 	const int EOS = 1024;
 	int idx = 1;
 	for (; idx < 1500; idx++){
+		if (debug_token){
+			PRINT_OUT("decoder step %d ", idx);
+		}
+
 		std::vector<AILIATensor> decoder_inputs;
 		decoder_inputs.push_back(y);
 		decoder_inputs.push_back(k);
@@ -435,8 +449,8 @@ static AILIATensor t2s_forward(AILIATensor ref_seq, AILIATensor text_seq, AILIAT
 			stop = true;
 		}
 
-		if (debug){
-			printf("%d ", argmax(logits));
+		if (debug_token){
+			PRINT_OUT("token %d\n", argmax(logits));
 		}
 
 		if (stop){
@@ -478,7 +492,9 @@ static int recognize_from_audio(AILIANetwork* net[MODEL_N])
 	}
 
 	// get sequence
-	PRINT_OUT("ref_seq\n");
+	if (debug_token){
+		PRINT_OUT("ref_seq\n");
+	}
 	AILIATensor ref_seq;
 	ref_seq.data = cleaned_text_to_sequence(REF_PHONES, REF_PHONES_SIZE);
 	ref_seq.shape.x = ref_seq.data.size();
@@ -487,10 +503,12 @@ static int recognize_from_audio(AILIANetwork* net[MODEL_N])
 	ref_seq.shape.w = 1;
 	ref_seq.shape.dim = 2;
 
-	PRINT_OUT("text_seq\n");
+	if (debug_token){
+		PRINT_OUT("text_seq\n");
+	}
 	AILIATensor text_seq;
 	text_seq.data = cleaned_text_to_sequence(TEXT_PHONES, TEXT_PHONES_SIZE);
-	text_seq.shape.x = ref_seq.data.size();
+	text_seq.shape.x = text_seq.data.size();
 	text_seq.shape.y = 1;
 	text_seq.shape.z = 1;
 	text_seq.shape.w = 1;
@@ -505,14 +523,14 @@ static int recognize_from_audio(AILIANetwork* net[MODEL_N])
 	ref_bert.shape.y = ref_seq.data.size();
 	ref_bert.shape.z = 1;
 	ref_bert.shape.w = 1;
-	ref_bert.shape.dim = 3;
+	ref_bert.shape.dim = 2;
 
 	text_bert.data = std::vector<float>(text_seq.data.size() * BERT_DIM);
 	text_bert.shape.x = BERT_DIM;
 	text_bert.shape.y = text_seq.data.size();
 	text_bert.shape.z = 1;
 	text_bert.shape.w = 1;
-	text_bert.shape.dim = 3;
+	text_bert.shape.dim = 2;
 
 	// resmaple to 16k and 32k
 	const int vits_hps_data_sampling_rate = 32000;
@@ -525,9 +543,9 @@ static int recognize_from_audio(AILIANetwork* net[MODEL_N])
 	ref_audio.data = resample(wave, vits_hps_data_sampling_rate, sampleRate, nChannels);
 	ref_audio.shape.x = ref_audio.data.size();
 	ref_audio.shape.y = 1;
-	ref_bert.shape.z = 1;
-	ref_bert.shape.w = 1;
-	ref_bert.shape.dim = 2;
+	ref_audio.shape.z = 1;
+	ref_audio.shape.w = 1;
+	ref_audio.shape.dim = 2;
 
 	// ssl
 	AILIATensor ssl_content = ssl_forward(ref_audio_16k, net[MODEL_SSL]);
@@ -536,16 +554,8 @@ static int recognize_from_audio(AILIANetwork* net[MODEL_N])
 	AILIATensor pred_semantic = t2s_forward(ref_seq, text_seq, ref_bert, text_bert, ssl_content, net);
 	AILIATensor audio = vits_forward(text_seq, pred_semantic, ref_audio, net[MODEL_VITS]);
 
-	/*
-	a = gpt_sovits.forward(ref_seq, text_seq, ref_bert, text_bert, wav32k, ssl_content)
-
-	savepath = args.savepath
-	logger.info(f'saved at : {savepath}')
-
-	soundfile.write(savepath, a, vits_hps_data_sampling_rate)
-
-	logger.info('Script finished successfully.')
-	*/
+	// save
+	write_wave_file("output.wav", audio.data, vits_hps_data_sampling_rate);
 
 	PRINT_OUT("Program finished successfully.\n");
 
