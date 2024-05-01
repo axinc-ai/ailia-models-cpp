@@ -14,6 +14,7 @@
 #include <vector>
 #include <string>
 #include <math.h>
+#include <chrono>
 
 #undef UNICODE
 
@@ -434,16 +435,18 @@ static AILIATensor t2s_forward(AILIATensor ref_seq, AILIATensor text_seq, AILIAT
 			PRINT_OUT("decoder step %d ", idx);
 		}
 
-		clock_t start = clock();
+		//clock_t start = clock();
+		auto start2 = std::chrono::high_resolution_clock::now();
 		forward(net[MODEL_DECODER], decoder_inputs, decoder_outputs);
-        clock_t end = clock();
+		auto end2 = std::chrono::high_resolution_clock::now();
+        //clock_t end = clock();
 
 		decoder_inputs[0] = &decoder_outputs[0]; // y
 		decoder_inputs[1] = &decoder_outputs[1]; // k
 		decoder_inputs[2] = &decoder_outputs[2]; // v
 		decoder_inputs[3] = &decoder_outputs[3]; // y_emb
-		AILIATensor logits = decoder_outputs[4];
-		AILIATensor samples = decoder_outputs[5];
+		AILIATensor& logits = decoder_outputs[4];
+		AILIATensor& samples = decoder_outputs[5];
 
 		bool stop = false;
 		if (early_stop_num != -1 && y.shape.x - prefix_len > early_stop_num){
@@ -459,7 +462,8 @@ static AILIATensor t2s_forward(AILIATensor ref_seq, AILIATensor text_seq, AILIAT
 		}
 
 		if (benchmark){
-            PRINT_OUT("\tailia processing time %ld ms\n", ((end-start)*1000)/CLOCKS_PER_SEC);
+            //PRINT_OUT("\tailia processing time %ld ms\n", ((end-start)*1000)/CLOCKS_PER_SEC);
+            PRINT_OUT("\tailia processing time %ld ms\n",  std::chrono::duration_cast<std::chrono::milliseconds>(end2 - start2).count());
 		}
 
 		if (stop){
