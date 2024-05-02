@@ -1,11 +1,11 @@
 #!/bin/bash
 
 MODEL="gpt-sovits"
-FILE1="nahida_cnhubert.onnx"
-FILE2="nahida_t2s_encoder.onnx"
-FILE3="nahida_t2s_fsdec.onnx"
-FILE4="nahida_t2s_sdec.onnx"
-FILE5="nahida_vits.onnx"
+FILE1="cnhubert.onnx"
+FILE2="t2s_encoder.onnx"
+FILE3="t2s_fsdec.onnx"
+FILE4="t2s_sdec.onnx"
+FILE5="vits.onnx"
 
 #download
 if [ ! "$1" = "-h" ] && [ ! "$1" = "--help" ]; then

@@ -52,31 +52,18 @@ bool debug_token = false;
 #define MODEL_DECODER 3
 #define MODEL_VITS 4
 
-const char *MODEL_NAME[5] = {"nahida_cnhubert.onnx", "nahida_t2s_encoder.onnx", "nahida_t2s_fsdec.onnx", "nahida_t2s_sdec.onnx", "nahida_vits.onnx"};
+const char *MODEL_NAME[5] = {"cnhubert.onnx", "t2s_encoder.onnx", "t2s_fsdec.onnx", "t2s_sdec.onnx", "vits.onnx"};
 
 static bool benchmark  = false;
 static int args_env_id = -1;
 
-std::string input_text = "reference_audio_captured_by_ax.wav";
+std::string reference_wave = "reference_audio_captured_by_ax.wav";
 
 #define REF_PHONES_SIZE 37
 #define TEXT_PHONES_SIZE 72
 
 const char * REF_PHONES[REF_PHONES_SIZE] = {"m", "i", "z", "u", "o", "m", "a", "r", "e", "e", "sh", "i", "a", "k", "a", "r", "a", "k", "a", "w", "a", "n", "a", "k", "U", "t", "e", "w", "a", "n", "a", "r", "a", "n", "a", "i", "."};
 const char *TEXT_PHONES[TEXT_PHONES_SIZE] = {"e", "i", "e", "cl", "k", "U", "s", "u", "k", "a", "b", "u", "sh", "I", "k", "i", "g", "a", "i", "sh", "a", "d", "e", "w", "a", "e", "e", "a", "i", "n", "o", "j", "i", "ts", "u", "y", "o", "o", "k", "a", "n", "o", "t", "a", "m", "e", "n", "o", "g", "i", "j", "u", "ts", "u", "o", "k", "a", "i", "h", "a", "ts", "u", "sh", "I", "t", "e", "i", "m", "a", "s", "U", "."};
-
-/*
-[[225 160 319 254 229 225  96 248 129 129 251 160  96 222  96 248  96 222
-   96 316  96 227  96 222  82 252 129 316  96 227  96 248  96 227  96 160
-	3]]
-*/
-
-/*
-[[129 160 129 126 222  82 250 254 222  96 122 254 251  52 222 160 156  96
-  160 251  96 127 129 316  96 129 129  96 160 227 229 221 160 253 254 318
-  229 229 222  96 227 229 252  96 225 129 227 229 156 160 221 254 253 254
-  229 222  96 160 158  96 253 254 251  52 252 129 160 225  96 250  82   3]]
-*/
 
 #define SYMBOLS_N 322
 const char *SYMBOLS[SYMBOLS_N] = {"!", ",", "-", ".", "?", "AA", "AA0", "AA1", "AA2", "AE0", "AE1", "AE2", "AH0", "AH1", "AH2", "AO0", "AO1", "AO2", "AW0", "AW1", "AW2", "AY0", "AY1", "AY2", "B", "CH", "D", "DH", "E1", "E2", "E3", "E4", "E5", "EE", "EH0", "EH1", "EH2", "ER", "ER0", "ER1", "ER2", "EY0", "EY1", "EY2", "En1", "En2", "En3", "En4", "En5", "F", "G", "HH", "I", "IH", "IH0", "IH1", "IH2", "IY0", "IY1", "IY2", "JH", "K", "L", "M", "N", "NG", "OO", "OW0", "OW1", "OW2", "OY0", "OY1", "OY2", "P", "R", "S", "SH", "SP", "SP2", "SP3", "T", "TH", "U", "UH0", "UH1", "UH2", "UNK", "UW0", "UW1", "UW2", "V", "W", "Y", "Z", "ZH", "_", "a", "a1", "a2", "a3", "a4", "a5", "ai1", "ai2", "ai3", "ai4", "ai5", "an1", "an2", "an3", "an4", "an5", "ang1", "ang2", "ang3", "ang4", "ang5", "ao1", "ao2", "ao3", "ao4", "ao5", "b", "by", "c", "ch", "cl", "d", "dy", "e", "e1", "e2", "e3", "e4", "e5", "ei1", "ei2", "ei3", "ei4", "ei5", "en1", "en2", "en3", "en4", "en5", "eng1", "eng2", "eng3", "eng4", "eng5", "er1", "er2", "er3", "er4", "er5", "f", "g", "gy", "h", "hy", "i", "i01", "i02", "i03", "i04", "i05", "i1", "i2", "i3", "i4", "i5", "ia1", "ia2", "ia3", "ia4", "ia5", "ian1", "ian2", "ian3", "ian4", "ian5", "iang1", "iang2", "iang3", "iang4", "iang5", "iao1", "iao2", "iao3", "iao4", "iao5", "ie1", "ie2", "ie3", "ie4", "ie5", "in1", "in2", "in3", "in4", "in5", "ing1", "ing2", "ing3", "ing4", "ing5", "iong1", "iong2", "iong3", "iong4", "iong5", "ir1", "ir2", "ir3", "ir4", "ir5", "iu1", "iu2", "iu3", "iu4", "iu5", "j", "k", "ky", "l", "m", "my", "n", "ny", "o", "o1", "o2", "o3", "o4", "o5", "ong1", "ong2", "ong3", "ong4", "ong5", "ou1", "ou2", "ou3", "ou4", "ou5", "p", "py", "q", "r", "ry", "s", "sh", "t", "ts", "u", "u1", "u2", "u3", "u4", "u5", "ua1", "ua2", "ua3", "ua4", "ua5", "uai1", "uai2", "uai3", "uai4", "uai5", "uan1", "uan2", "uan3", "uan4", "uan5", "uang1", "uang2", "uang3", "uang4", "uang5", "ui1", "ui2", "ui3", "ui4", "ui5", "un1", "un2", "un3", "un4", "un5", "uo1", "uo2", "uo3", "uo4", "uo5", "v", "v1", "v2", "v3", "v4", "v5", "van1", "van2", "van3", "van4", "van5", "ve1", "ve2", "ve3", "ve4", "ve5", "vn1", "vn2", "vn3", "vn4", "vn5", "w", "x", "y", "z", "zh", "…"};
@@ -113,7 +100,7 @@ static void print_help()
 
 static void print_error(std::string arg)
 {
-	PRINT_ERR("fugumt: error: unrecognized arguments: %s\n", arg.c_str());
+	PRINT_ERR("gpt-sovits: error: unrecognized arguments: %s\n", arg.c_str());
 	return;
 }
 
@@ -148,7 +135,7 @@ static int argument_parser(int argc, char **argv)
 		else if (arg[0] != '-') {
 			switch (status) {
 			case 1:
-				input_text = arg;
+				reference_wave = arg;
 				break;
 			case 4:
 				args_env_id = atoi(arg.c_str());
@@ -205,7 +192,7 @@ void forward(AILIANetwork *ailia, std::vector<AILIATensor*> &inputs, std::vector
 		}
 
 		if (debug){
-			printf("input blob shape %d %d %d %d dims %d\n",inputs[i]->shape.x,inputs[i]->shape.y,inputs[i]->shape.z,inputs[i]->shape.w,inputs[i]->shape.dim);
+			PRINT_OUT("input blob shape %d %d %d %d dims %d\n",inputs[i]->shape.x,inputs[i]->shape.y,inputs[i]->shape.z,inputs[i]->shape.w,inputs[i]->shape.dim);
 		}
 
 		status = ailiaSetInputBlobShape(ailia,&inputs[i]->shape,input_blob_idx,AILIA_SHAPE_VERSION);
@@ -244,7 +231,7 @@ void forward(AILIANetwork *ailia, std::vector<AILIATensor*> &inputs, std::vector
 		}
 
 		if (debug){
-			printf("output_blob_shape %d %d %d %d dims %d\n",output_blob_shape.x,output_blob_shape.y,output_blob_shape.z,output_blob_shape.w,output_blob_shape.dim);
+			PRINT_OUT("output_blob_shape %d %d %d %d dims %d\n",output_blob_shape.x,output_blob_shape.y,output_blob_shape.z,output_blob_shape.w,output_blob_shape.dim);
 		}
 
 		if (outputs.size() <= i){
@@ -494,9 +481,9 @@ static int recognize_from_audio(AILIANetwork* net[MODEL_N])
 	int status = AILIA_STATUS_SUCCESS;
 
 	int sampleRate, nChannels, nSamples;
-	std::vector<float> wave = read_wave_file(input_text.c_str(), &sampleRate, &nChannels, &nSamples);
+	std::vector<float> wave = read_wave_file(reference_wave.c_str(), &sampleRate, &nChannels, &nSamples);
 	if (wave.size() == 0){
-		PRINT_ERR("Input file not found (%s)\n", input_text.c_str());
+		PRINT_ERR("Input file not found (%s)\n", reference_wave.c_str());
 		return AILIA_STATUS_ERROR_FILE_API;
 	}
 

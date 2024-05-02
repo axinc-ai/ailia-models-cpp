@@ -3,11 +3,11 @@ setlocal enabledelayedexpansion
 cd %~dp0
 
 set MODEL=gpt-sovits
-set FILE1=nahida_cnhubert.onnx
-set FILE2=nahida_t2s_encoder.onnx
-set FILE3=nahida_t2s_fsdec.onnx
-set FILE4=nahida_t2s_sdec.onnx
-set FILE5=nahida_vits.onnx
+set FILE1=cnhubert.onnx
+set FILE2=t2s_encoder.onnx
+set FILE3=t2s_fsdec.onnx
+set FILE4=t2s_sdec.onnx
+set FILE5=vits.onnx
 
 rem download
 if not "%1" == "-h" if not "%1" == "--help" (
