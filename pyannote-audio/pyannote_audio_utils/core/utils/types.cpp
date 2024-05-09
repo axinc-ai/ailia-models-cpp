@@ -4,13 +4,17 @@
 #include <vector>
 #include <memory>
 #include <type_traits>
+#include <optional>
 
-
-
+// クラスの前方宣言
+class Segment;
+class Timeline;
+class SlidingWindowFeature;
+class Annotation;
 
 // Support と Resource の型定義
-// using Support = std::variant<Segment*, Timeline*>;
-// using Resource = std::variant<Segment*, Timeline*, SlidingWindowFeature*, Annotation*>;
+using Support = std::optional<std::variant<const Segment*, const Timeline*>>;
+using Resource = std::variant<Segment*, Timeline*, SlidingWindowFeature*, Annotation*>;
 
 // TrackName と Key の定義
 using TrackName = std::variant<std::string, int>;

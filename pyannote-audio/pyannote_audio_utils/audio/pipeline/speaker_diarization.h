@@ -5,4 +5,10 @@
 
 int speaker_diarization_test(int input);
 
+class SpeakerDiarization
+{
+
+};
+
+
 #endif

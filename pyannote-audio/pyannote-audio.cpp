@@ -15,6 +15,7 @@
 #include <string>
 #include <math.h>
 
+
 #include <iostream>
 
 #undef UNICODE
@@ -22,6 +23,8 @@
 // #include "ailia.h"
 // #include "ailia_tokenizer.h"
 
+
+#include "speaker_diarization.h"
 
 
 // ======================
@@ -96,5 +99,8 @@ static void print_error(std::string arg)
 
 int main(int argc, char **argv)
 {
-    PRINT_OUT("デバック\n");
+	int _test = speaker_diarization_test(-2);
+
+	PRINT_OUT("%d", _test);
+
 }

@@ -3,7 +3,6 @@
 
 #include "diarization.h"
 
-
 int speaker_diarization_test(int input)
 {
     int result = diarization_test(input);
@@ -12,7 +11,7 @@ int speaker_diarization_test(int input)
 
 
 // class SpeakerDiarization : SpeakerDiarizationMixin, Pipeline
-class SpeakerDiarization
+class SpeakerDiarization : SpeakerDiarizationMixin
 {
 
 };

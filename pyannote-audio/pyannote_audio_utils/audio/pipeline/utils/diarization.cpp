@@ -5,6 +5,9 @@
 #include <string>
 
 
+#include "annotation.h"
+
+
 int diarization_test(int input)
 {
     return input^3;
