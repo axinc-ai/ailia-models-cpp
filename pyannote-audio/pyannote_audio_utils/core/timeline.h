@@ -44,6 +44,7 @@ public:
     std::string __str__() const;
     std::string __repr__() const;
     bool __contains__(const Segment& segment) const;
+    bool __contains__(const Timeline& timeline) const;
     Timeline empty() const;
     bool covers(const Timeline& other) const;
     Timeline copy(std::function<Segment(Segment)> segmentFunc = nullptr) const;

@@ -21,12 +21,20 @@ public:
     Timeline(const std::string& uri) : uri(uri) {} // URIのみを引数に取るコンストラクタ
 
     // コンストラクタ
-    Timeline(const std::vector<Segment>& segments = {}, const std::string& uri = "") //__init__
-        : uri(uri) {
+    // Timeline(const std::vector<Segment>& segments = {}, const std::string& uri = "") //__init__
+    //     : uri(uri) {
+    //     for (const auto& segment : segments) {
+    //         add(segment);
+    //     }
+    // }
+
+    // segments と URI を引数に取るコンストラクタ
+    Timeline(const std::vector<Segment>& segments, const std::string& uri) : uri(uri) {
         for (const auto& segment : segments) {
             add(segment);
         }
     }
+
 
     // URIを設定するメンバ関数
     void setUri(const std::string& newUri) { //__init__
@@ -300,6 +308,15 @@ public:
 
     bool __contains__(const Segment& segment) const {
         return segmentsSet.find(segment) != segmentsSet.end();
+    }
+
+    bool __contains__(const Timeline& timeline) const {
+        for (const Segment& seg : timeline.segmentsVector) {
+            if (segmentsSet.find(seg) == segmentsSet.end()) {
+                return false;
+            }
+        }
+        return true;
     }
 
     // 空のコピーを返す
