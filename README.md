@@ -74,6 +74,8 @@ cd yolox
 ./yolox.sh -v 0
 ```
 
+In the case of Windows, please copy dll files such as ailia.dll to the execution directory.
+
 # Supporting Models
 
 We are now converting to C++. Please wait to complete conversion.
