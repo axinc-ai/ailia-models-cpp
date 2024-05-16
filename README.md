@@ -12,13 +12,25 @@ ailia SDK is a cross-platform high speed inference SDK. The ailia SDK provides a
 
 ### Download ailia SDK
 
-You can download a free evaluation version that allows you to evaluate the ailia SDK for 30 days. Please download from the trial link below.
+The ailia SDK can be installed from a git submodule.
 
-https://ailia.jp/en/
+```
+git subomdule init
+git submodule update
+```
 
-### Install ailia SDK
+### Download license file
 
-Copy the files located in the folder [ailia SDK]/library/ to the folder ./ailia/library/.
+Download the ailia SDK license file with the following command. The license file is valid for one month.
+
+```
+cd ailia
+python3 download_license.py
+```
+
+Alternatively, the license file can be obtained by requesting the evaluation version of the ailia SDK.
+
+[Request trial version](https://axinc.jp/en/trial/)
 
 ### Install dependent libraries
 
@@ -51,8 +63,6 @@ apt install libopencv-dev
 ### Build
 
 ```
-cd yolox
-export AILIA_LIBRARY_PATH=../ailia/library
 cmake .
 make
 ```
@@ -60,8 +70,11 @@ make
 ### Run
 
 ```
+cd yolox
 ./yolox.sh -v 0
 ```
+
+In the case of Windows, please copy dll files such as ailia.dll to the execution directory.
 
 # Supporting Models
 
@@ -129,43 +142,3 @@ We are now converting to C++. Please wait to complete conversion.
 |[bert_maskedlm](/bert_maskedlm) | [huggingface/transformers](https://github.com/huggingface/transformers) | Pytorch | 1.2.5 and later |
 |[sentence_transformers](/sentence_transformers) | [sentence transformers](https://huggingface.co/sentence-transformers/paraphrase-multilingual-mpnet-base-v2) | Pytorch | 1.2.7 and later |
 |[t5_whisper_medical](/t5_whisper_medical) | error correction of medical terms using t5 | Pytorch | 1.2.13 and later | |
-
-# For NLP models
-
-ailia.tokenizer is additionally required to use NLP models.
-
-### Download ailia.tokenizer
-
-You can download a free evaluation version that allows you to evaluate the ailia.tokenizer.
-Please download from the trial link below.
-
-https://axip-console.appspot.com/trial/terms/AILIA-TOKENIZER?lang=en
-
-### Install ailia SDK
-
-Copy the files located in the folder [ailia Tokenizer]/library/ to the folder ./ailia_tokenizer/library/.
-
-### Build
-
-```
-cd fugumt-en-ja
-export AILIA_LIBRARY_PATH=../ailia/library
-export AILIA_TOKENIZER_PATH=../ailia_tokenizer/library
-cmake .
-make
-```
-
-### Run
-
-```
-./fugumt-en-ja.sh
-```
-
-# Build all samples
-
-```
-export AILIA_LIBRARY_PATH=../ailia/library
-export AILIA_TOKENIZER_PATH=../ailia_tokenizer/library
-cmake .
-make
-```
