@@ -68,7 +68,8 @@ public:
     double samplesToDuration(int n_samples) const;
     int duration_to_samples(double duration) const;
     int durationToSamples(double duration) const;
-    Segment __getitem__(int i) const;
+    // Segment __getitem__(int i) const;
+    Segment& operator[](int i);
     Segment next();
     SlidingWindow& __iter_begin__();
     SlidingWindow& __iter_end__();

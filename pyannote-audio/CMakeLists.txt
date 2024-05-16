@@ -9,6 +9,8 @@ set(SRC_FILES
     ./pyannote_audio_utils/core/utils/types.cpp
     ./pyannote_audio_utils/core/segment.cpp
     ./pyannote_audio_utils/core/timeline.cpp
+    ./pyannote_audio_utils/core/utils/generators.cpp
+    ./pyannote_audio_utils/core/feature.cpp
 )
 
 # AILIA ライブラリのパスを環境変数から取得

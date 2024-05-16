@@ -1,12 +1,15 @@
 #ifndef TIMELINE_H
 #define TIMELINE_H
 
+#pragma once
+
 #include <vector>
 #include <set>
 #include <algorithm>
 #include <string>
 #include <optional>
 #include <variant>
+
 
 class Timeline {
 private:
@@ -18,6 +21,7 @@ public:
     Timeline(const std::string& uri);
     Timeline(const std::vector<Segment>& segments = {}, const std::string& uri = "");
 
+    std::string getUri() const;
     void setUri(const std::string& newUri);
     const std::vector<Segment>& getSegments() const;
     size_t __len__() const;
@@ -51,11 +55,12 @@ public:
     Segment extent() const;
     std::vector<Segment> support_iter(double collar = 0.0) const;
     Timeline support(double collar = 0.0) const;
+    // std::shared_ptr<Timeline> support(double collar = 0.0) const;
     double duration() const;
     std::vector<Segment> gaps_iter(const Support& support) const;
     Timeline gaps(const Support& support = {}) const;
     Timeline segmentation() const;
-    // Annotation toAnnotation(const std::string& generatorType, const std::string& modality) const;
+    std::shared_ptr<Annotation> toAnnotation(const std::string& generatorType, const std::optional<std::string>& modality) const;
     std::string to_uem() const;
     void write_uem(const std::string& filename) const;
 };

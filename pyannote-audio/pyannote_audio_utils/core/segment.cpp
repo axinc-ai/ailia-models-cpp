@@ -355,19 +355,28 @@ public:
     }
 
     // 指定されたインデックスにあるスライディングウィンドウを取得
-    Segment __getitem__(int i) const {
+    // Segment __getitem__(int i) const {
+    //     double segmentStart = start + i * step;
+    //     if (segmentStart >= end) {
+    //         // 範囲外の場合、空のセグメントを返す
+    //         return Segment();
+    //     }
+    //     return Segment(segmentStart, segmentStart + duration);
+    // }
+
+    Segment& operator[](int i) { //__getitem__
         double segmentStart = start + i * step;
-        if (segmentStart >= end) {
-            // 範囲外の場合、空のセグメントを返す
-            return Segment();
+        if (segmentStart >= end || i < 0) {
+            // 範囲外の場合、例外を投げる
+            throw std::out_of_range("Index out of range");
         }
-        return Segment(segmentStart, segmentStart + duration);
+        return *new Segment(segmentStart, segmentStart + duration);  // 注意: この方法はメモリリークを引き起こす可能性があります。
     }
 
     // 次のスライディングウィンドウを取得するメソッド
     Segment next() {
         ++index;
-        Segment window = (*this).__getitem__(index);
+        Segment window = (*this)[index];
         if (!window) { // Segmentの__bool__メソッドが false を返すとき
             throw std::out_of_range("No more segments available.");
         }

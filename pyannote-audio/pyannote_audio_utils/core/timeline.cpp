@@ -8,6 +8,7 @@
 
 #include "types.h"
 #include "segment.h"
+#include "generators.h"
 #include "annotation.h"
 
 class Timeline {
@@ -39,6 +40,10 @@ public:
     // URIを設定するメンバ関数
     void setUri(const std::string& newUri) { //__init__
         uri = newUri;
+    }
+
+    std::string getUri() const {
+        return uri;
     }
 
     // セグメントを取得するメンバ関数
@@ -404,6 +409,11 @@ public:
         return Timeline(supportSegments, uri);
     }
 
+    // std::shared_ptr<Timeline> support(double collar = 0.0) const {
+    //     std::vector<Segment> supportSegments = support_iter(collar);
+    //     return std::make_shared<Timeline>(supportSegments, uri);
+    // }
+
     //各セグメントの長さを計算し合計
     double duration() const {
         double total_duration = 0.0;
@@ -493,18 +503,26 @@ public:
 
 
     //ここは，annotation.cppの定義が終わったのち追加
-    /*
-    Annotation toAnnotation(const std::string& generatorType, const std::string& modality) const {
-        Annotation annotation(uri, modality);
-        LabelGenerator generator(generatorType);  // ジェネレータを初期化
+    std::shared_ptr<Annotation> toAnnotation(const std::string& generatorType, const std::optional<std::string>& modality) const {
+        auto annotation = std::make_shared<Annotation>(uri, modality);
+        std::function<std::string()> labelGenerator;
+
+        if (generatorType == "string") {
+            labelGenerator = string_generator();
+        } else if (generatorType == "int") {
+            auto intGen = int_generator();
+            labelGenerator = [&intGen]() { return std::to_string(intGen()); };
+        }
+
+        TrackName defaultTrackName = "defaultTrack"; // ここで適切なトラック名を設定
 
         for (const auto& segment : segmentsVector) {
-            annotation.addLabel(segment, generator.nextLabel());
+            std::string label = labelGenerator();
+            annotation->__setitem__(segment, defaultTrackName, label); // セグメントとラベルを設定
         }
 
         return annotation;
     }
-    */
 
 
     // UEMフォーマットでのシリアライズを行う関数
