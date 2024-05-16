@@ -12,10 +12,19 @@ project(samples C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 
-set(AILIA_LIBRARY_PATH "Path for ailia SDK library" ../ailia/library)
-set(AILIA_TOKENIZER_PATH "Path for ailia Tokenizer library" ../ailia_tokenizer/library)
-set(AILIA_AUDIO_PATH "Path for ailia Audio library" ../ailia_audio/library)
-set(AILIA_SPEECH_PATH "Path for ailia Speech library" ../ailia_speech/library)
+set(AILIA_LIBRARY_PATH ../ailia/library)
+set(AILIA_TOKENIZER_PATH ../ailia_tokenizer/library)
+set(AILIA_AUDIO_PATH  ../ailia_audio/library)
+set(AILIA_SPEECH_PATH ../ailia_speech/library)
+
+set (INCLUDE_PATH ${AILIA_LIBRARY_PATH}/include ${AILIA_TOKENIZER_PATH}/include ${AILIA_AUDIO_PATH}/include ../util)
+if(WIN32)
+    set (LIBRARY_PATH ${AILIA_LIBRARY_PATH}/windows/x64 ${AILIA_TOKENIZER_PATH}/windows/x64 ${AILIA_AUDIO_PATH}/windows/x64)
+elseif(APPLE)
+    set (LIBRARY_PATH ${AILIA_LIBRARY_PATH}/mac ${AILIA_TOKENIZER_PATH}/mac ${AILIA_AUDIO_PATH}/mac)
+else(WIN32)
+    set (LIBRARY_PATH ${AILIA_LIBRARY_PATH}/linux ${AILIA_TOKENIZER_PATH}/linux ${AILIA_AUDIO_PATH}/linux)
+endif(WIN32)
 
 add_subdirectory(arcface)
 add_subdirectory(bert_maskedlm)

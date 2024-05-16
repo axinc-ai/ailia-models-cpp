@@ -3,14 +3,7 @@
 set (PROJECT_NAME m2det)
 set (SRC_FILES ${PROJECT_NAME}.cpp)
 set (SRC_FILES ${SRC_FILES} ../util/utils.cpp)
-set (INCLUDE_PATH ${AILIA_LIBRARY_PATH}/include ../util)
-if(WIN32)
-    set (LIBRARY_PATH ${AILIA_LIBRARY_PATH}/windows/x64)
-elseif(APPLE)
-    set (LIBRARY_PATH ${AILIA_LIBRARY_PATH}/mac)
-else(WIN32)
-    set (LIBRARY_PATH ${AILIA_LIBRARY_PATH}/linux)
-endif(WIN32)
+
 set (CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
 project(${PROJECT_NAME} CXX)
