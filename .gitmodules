@@ -1,12 +1,3 @@
 [submodule "ailia"]
 	path = ailia
 	url = https://github.com/axinc-ai/ailia-sdk-cpp.git
-[submodule "ailia-tokenizer"]
-	path = ailia-tokenizer
-	url = https://github.com/axinc-ai/ailia-tokenizer-cpp.git
-[submodule "ailia-audio"]
-	path = ailia-audio
-	url = https://github.com/axinc-ai/ailia-audio-cpp.git
-[submodule "ailia-speech"]
-	path = ailia-speech
-	url = https://github.com/axinc-ai/ailia-speech-cpp.git
