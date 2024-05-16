@@ -2,13 +2,13 @@
 
 set (PROJECT_NAME silero-vad)
 set (SRC_FILES ${PROJECT_NAME}.cpp ../util/wave_reader.cpp)
-set (INCLUDE_PATH $ENV{AILIA_LIBRARY_PATH}/include ../util)
+set (INCLUDE_PATH ${AILIA_LIBRARY_PATH}/include ../util)
 if(WIN32)
-    set (LIBRARY_PATH $ENV{AILIA_LIBRARY_PATH}/windows/x64)
+    set (LIBRARY_PATH ${AILIA_LIBRARY_PATH}/windows/x64)
 elseif(APPLE)
-    set (LIBRARY_PATH $ENV{AILIA_LIBRARY_PATH}/mac)
+    set (LIBRARY_PATH ${AILIA_LIBRARY_PATH}/mac)
 else(WIN32)
-    set (LIBRARY_PATH $ENV{AILIA_LIBRARY_PATH}/linux)
+    set (LIBRARY_PATH ${AILIA_LIBRARY_PATH}/linux)
 endif(WIN32)
 set (CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
