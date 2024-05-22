@@ -36,8 +36,13 @@ Alternatively, the license file can be obtained by requesting the evaluation ver
 
 #### Windows
 
-gnumake and Visual Studio 2015 or newer are required.
-http://gnuwin32.sourceforge.net/packages/make.htm
+cmake, opencv and Visual Studio 2019 or newer are required.
+- https://cmake.org/download/
+- https://opencv.org/releases/
+
+Please set the OpenCV path to the environment variable.
+
+- OpenCV_DIR: C:\opencv\build
 
 #### Mac
 
@@ -47,39 +52,59 @@ Xcode Commandline Tools are required, they can be installed by running the comma
 xcode-select --install
 ```
 
-OpenCV is required, it can be installed by running the command.
+cmake and OpenCV is required, it can be installed by running the command.
 
 ```
+brew install cmake
 brew install opencv
 ```
 
 #### Linux
 
-OpenCV is required, it can be installed by running the command.
+cmake and OpenCV is required, it can be installed by running the command.
 
 ```
+apt install cmake
 apt install libopencv-dev
 ```
 
 ### Build
 
+Please run the following command in the root folder of your local repository.
+
 ```
 cmake .
-make
+cmake --build .
 ```
 
 ### Run
+
+Move to the model folder, execute sh or bat, then the model file will be downloaded and the model will run.
+
+### Windows
+
+In the case of Windows, please copy dll files such as ailia.dll to the execution directory.
+
+```
+cd yolox
+./yolox.bat
+```
+
+#### Mac and Linux
+
+```
+cd yolox
+./yolox.sh
+```
+
+You can use the web camera by adding the -v 0 option.
 
 ```
 cd yolox
 ./yolox.sh -v 0
 ```
 
-In the case of Windows, please copy dll files such as ailia.dll to the execution directory.
-
 # Supporting Models
-
-We are now converting to C++. Please wait to complete conversion.
 
 ## Audio processing
 
@@ -87,7 +112,7 @@ We are now converting to C++. Please wait to complete conversion.
 |:-----------|------------:|:------------:|:------------:|
 | [silero-vad](/silero-vad/) | [Silero VAD](https://github.com/snakers4/silero-vad) | Pytorch | 1.2.15 and later | |
 | [clap](/clap/) | [CLAP](https://github.com/LAION-AI/CLAP) | Pytorch | 1.3.0 and later | |
-| [whisper](/whisper/) | [Whisper](https://github.com/openai/whisper) | Pytorch | 1.2.10 and later | [JP](https://medium.com/axinc/whisper-%E6%97%A5%E6%9C%AC%E8%AA%9E%E3%82%92%E5%90%AB%E3%82%8099%E8%A8%80%E8%AA%9E%E3%82%92%E8%AA%8D%E8%AD%98%E3%81%A7%E3%81%8D%E3%82%8B%E9%9F%B3%E5%A3%B0%E8%AA%8D%E8%AD%98%E3%83%A2%E3%83%87%E3%83%AB-b6e578f55c87) |
+| [whisper](/whisper/) | [Whisper](https://github.com/openai/whisper) | Pytorch | 1.2.16 and later | [JP](https://medium.com/axinc/whisper-%E6%97%A5%E6%9C%AC%E8%AA%9E%E3%82%92%E5%90%AB%E3%82%8099%E8%A8%80%E8%AA%9E%E3%82%92%E8%AA%8D%E8%AD%98%E3%81%A7%E3%81%8D%E3%82%8B%E9%9F%B3%E5%A3%B0%E8%AA%8D%E8%AD%98%E3%83%A2%E3%83%87%E3%83%AB-b6e578f55c87) |
 
 ## Image classification
 
@@ -144,3 +169,10 @@ We are now converting to C++. Please wait to complete conversion.
 |[bert_maskedlm](/bert_maskedlm) | [huggingface/transformers](https://github.com/huggingface/transformers) | Pytorch | 1.2.5 and later |
 |[sentence_transformers](/sentence_transformers) | [sentence transformers](https://huggingface.co/sentence-transformers/paraphrase-multilingual-mpnet-base-v2) | Pytorch | 1.2.7 and later |
 |[t5_whisper_medical](/t5_whisper_medical) | error correction of medical terms using t5 | Pytorch | 1.2.13 and later | |
+
+# Other languages
+
+- [python version](https://github.com/axinc-ai/ailia-models)
+- [unity version](https://github.com/axinc-ai/ailia-models-unity)
+- [flutter version](https://github.com/axinc-ai/ailia-models-flutter)
+- [rust version](https://github.com/axinc-ai/ailia-models-rust)
