@@ -2,7 +2,7 @@
 
 MODEL=whisper
 FILE1=encoder_small.opt3.onnx
-FILE2=decoder_tiny_fix_kv_cache.opt3.onnx
+FILE2=decoder_small_fix_kv_cache.opt3.onnx
 
 #download
 if [ ! "$1" = "-h" ] && [ ! "$1" = "--help" ]; then

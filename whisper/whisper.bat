@@ -4,7 +4,7 @@ cd %~dp0
 
 set MODEL=whisper
 set FILE1=encoder_small.opt3.onnx
-set FILE2=decoder_tiny_fix_kv_cache.opt3.onnx
+set FILE2=decoder_small_fix_kv_cache.opt3.onnx
 
 rem download
 if not "%1" == "-h" if not "%1" == "--help" (

@@ -1,10 +1,10 @@
 /*******************************************************************
 *
 *    DESCRIPTION:
-*      ailia Speech Sample Program
+*      Whisper with ailia Speech Sample Program
 *    AUTHOR:
 *      ax Inc.
-*    DATE:2023/03/06
+*    DATE:2024/05/22
 *
 *******************************************************************/
 
@@ -20,6 +20,108 @@
 #include "ailia_speech_util.h"
 
 #include "wave_reader.h"
+
+// ======================
+// Parameters
+// ======================
+
+#if defined(_WIN32) || defined(_WIN64)
+#define PRINT_OUT(...) fprintf_s(stdout, __VA_ARGS__)
+#define PRINT_ERR(...) fprintf_s(stderr, __VA_ARGS__)
+#else
+#define PRINT_OUT(...) fprintf(stdout, __VA_ARGS__)
+#define PRINT_ERR(...) fprintf(stderr, __VA_ARGS__)
+#endif
+
+static int args_env_id = -1;
+
+std::string input_file = "demo.wav";
+
+// ======================
+// Arguemnt Parser
+// ======================
+
+static void print_usage()
+{
+	PRINT_OUT("usage: whisper [-h] [-i FILE] [-b] [-e ENV_ID]\n");
+	return;
+}
+
+
+static void print_help()
+{
+	PRINT_OUT("\n");
+	PRINT_OUT("whisper model\n");
+	PRINT_OUT("\n");
+	PRINT_OUT("optional arguments:\n");
+	PRINT_OUT("  -h, --help            show this help message and exit\n");
+	PRINT_OUT("  -i FILE, --input FILE\n");
+	PRINT_OUT("                        The input file.\n");
+	PRINT_OUT("  -e ENV_ID, --env_id ENV_ID\n");
+	PRINT_OUT("                        The backend environment id.\n");
+	return;
+}
+
+
+static void print_error(std::string arg)
+{
+	PRINT_ERR("fugumt: error: unrecognized arguments: %s\n", arg.c_str());
+	return;
+}
+
+
+static int argument_parser(int argc, char **argv)
+{
+	int status = 0;
+
+	for (int i = 1; i < argc; i++) {
+		std::string arg = argv[i];
+		if (status == 0) {
+			if (arg == "-i" || arg == "--input") {
+				status = 1;
+			}
+			else if (arg == "-h" || arg == "--help") {
+				print_usage();
+				print_help();
+				return -1;
+			}
+			else if (arg == "-e" || arg == "--env_id") {
+				status = 4;
+			}
+			else {
+				print_usage();
+				print_error(arg);
+				return -1;
+			}
+		}
+		else if (arg[0] != '-') {
+			switch (status) {
+			case 1:
+				input_file = arg;
+				break;
+			case 4:
+				args_env_id = atoi(arg.c_str());
+				break;
+			default:
+				print_usage();
+				print_error(arg);
+				return -1;
+			}
+			status = 0;
+		}
+		else {
+			print_usage();
+			print_error(arg);
+			return -1;
+		}
+	}
+
+	return AILIA_STATUS_SUCCESS;
+}
+
+// ======================
+// Main functions
+// ======================
 
 int intermediate_callback(void *handle, const char *text){
 	printf("\r%s", text);
@@ -59,7 +161,7 @@ int get_text(struct AILIASpeech* net, bool live_mode){
 	return AILIA_STATUS_SUCCESS;
 }
 
-int update(struct AILIASpeech* net, const float *wave_buf, int nSamples, int nChannels, int sampleRate, int &push_i, unsigned int &complete, bool translate, bool live_mode, bool post_process){
+int update(struct AILIASpeech* net, const float *wave_buf, int nSamples, int nChannels, int sampleRate, int &push_i, unsigned int &complete, bool translate, bool live_mode){
 	int status;
 
 	// Push pcm input to queue
@@ -117,19 +219,6 @@ int update(struct AILIASpeech* net, const float *wave_buf, int nSamples, int nCh
 		if (status != AILIA_STATUS_SUCCESS){
 			return status;
 		}
-
-		// Post process
-		if (post_process){
-			status = ailiaSpeechPostProcess(net);
-			if (status != AILIA_STATUS_SUCCESS){
-				return status;
-			}
-
-			status = get_text(net, live_mode);
-			if (status != AILIA_STATUS_SUCCESS){
-				return status;
-			}
-		}
 	}
 
 	// Check all queued data processed
@@ -184,188 +273,23 @@ int get_model_name(std::string &encoder, std::string &decoder, int &model_id, co
 	return AILIA_STATUS_SUCCESS;
 }
 
-int get_environment_id(const char *type) {
-	unsigned int env_count;
-	int status = ailiaGetEnvironmentCount(&env_count);
+int main(int argc, char **argv){
+	int status = argument_parser(argc, argv);
 	if (status != AILIA_STATUS_SUCCESS) {
-		printf("ailiaGetEnvironmentCount Failed %d", status);
 		return -1;
 	}
 
-	int env_id = AILIA_ENVIRONMENT_ID_AUTO;
-	for (unsigned int i = 0; i < env_count; i++) {
-		AILIAEnvironment* env;
-		status = ailiaGetEnvironment(&env, i, AILIA_ENVIRONMENT_VERSION);
-		if (status != AILIA_STATUS_SUCCESS) {
-			printf("ailiaGetEnvironment Failed %d", status);
-			return -1;
-		}
-
-		printf("Environment ID:%d TYPE:%d NAME:%s\n", env->id, env->type, env->name);
-
-		if (std::string(type).find("cpu") != std::string::npos && env->type == AILIA_ENVIRONMENT_TYPE_CPU) {
-			env_id = env->id;
-		}
-		if (std::string(type).find("gpu") != std::string::npos && env->type == AILIA_ENVIRONMENT_TYPE_GPU) {
-			env_id = env->id;
-		}
-		if (std::string(type).find("blas") != std::string::npos && env->type == AILIA_ENVIRONMENT_TYPE_BLAS) {
-			env_id = env->id;
-		}
-	}
-
-	if (env_id == AILIA_ENVIRONMENT_ID_AUTO){
-		printf("Selected Environment:auto\n");
-	}else{
-		AILIAEnvironment* env;
-		status = ailiaGetEnvironment(&env, env_id, AILIA_ENVIRONMENT_VERSION);
-		if (status != AILIA_STATUS_SUCCESS) {
-			printf("ailiaGetEnvironment Failed %d", status);
-			return -1;
-		}
-		printf("Selected Environment:%s\n", env->name);
-	}
-
-	return env_id;
-}
-
-int set_options(struct AILIASpeech *net, const char *option){
-	int status = AILIA_STATUS_SUCCESS;
-
-	// Set prompt
-	bool prompt = strcmp(option, "prompt") == 0;
-	if (prompt){
-		const char * prompt_text = u8"ハードウェア ソフトウェア";
-		status = ailiaSpeechSetPrompt(net, prompt_text);
-		if (status != AILIA_STATUS_SUCCESS){
-			printf("ailiaSpeechSetPrompt Error %d\n", status);
-			printf("%s\n", ailiaSpeechGetErrorDetail(net));
-			return -1;
-		}
-	}
-
-	// Constraint
-	bool constraint_char = strcmp(option, "constraint_char") == 0;
-	if (constraint_char){
-		const char * constraint_text = u8"1234567890,.億千万百";
-		status = ailiaSpeechSetConstraint(net, constraint_text, AILIA_SPEECH_CONSTRAINT_CHARACTERS);
-		if (status != AILIA_STATUS_SUCCESS){
-			printf("ailiaSpeechSetConstraint Error %d\n", status);
-			printf("%s\n", ailiaSpeechGetErrorDetail(net));
-			return -1;
-		}
-	}
-
-	bool constraint_word = strcmp(option, "constraint_word") == 0;
-	if (constraint_word){
-		const char * constraint_text = u8"100億,100グラム";
-		status = ailiaSpeechSetConstraint(net, constraint_text, AILIA_SPEECH_CONSTRAINT_WORDS);
-		if (status != AILIA_STATUS_SUCCESS){
-			printf("ailiaSpeechSetConstraint Error %d\n", status);
-			printf("%s\n", ailiaSpeechGetErrorDetail(net));
-			return -1;
-		}
-	}
-
-	// Dictionary
-	bool dictionary = (strcmp(option, "dictionary") == 0);
-	if (dictionary){
-		status = ailiaSpeechOpenDictionaryFileA(net, "dict.csv", AILIA_SPEECH_DICTIONARY_TYPE_REPLACE);
-		if (status != AILIA_STATUS_SUCCESS){
-			printf("ailiaSpeechOpenDictionaryFileA Error %d\n", status);
-		}
-	}
-	
-	// Post Process
-	bool t5 = (strcmp(option, "t5") == 0);
-	if (t5){
-		status = ailiaSpeechOpenPostProcessFileA(net, "t5_whisper_medical-encoder.obf.onnx", "t5_whisper_medical-decoder-with-lm-head.obf.onnx", "spiece.model", NULL, "医療用語の訂正: ", AILIA_SPEECH_POST_PROCESS_TYPE_T5);
-		if (status != AILIA_STATUS_SUCCESS){
-			printf("ailiaSpeechOpenPostProcessFileA Error %d\n", status);
-		}
-	}
-
-	bool fugumt_en_ja = (strcmp(option, "fugumt_en_ja") == 0);
-	if (fugumt_en_ja){
-		status = ailiaSpeechOpenPostProcessFileA(net, "fugumt_en_ja_seq2seq-lm-with-past.onnx", NULL, "fugumt_en_ja_source.spm", "fugumt_en_ja_target.spm", NULL, AILIA_SPEECH_POST_PROCESS_TYPE_FUGUMT_EN_JA);
-		if (status != AILIA_STATUS_SUCCESS){
-			printf("ailiaSpeechOpenPostProcessFileA Error %d\n", status);
-		}
-	}
-	
-	bool fugumt_ja_en = (strcmp(option, "fugumt_ja_en") == 0);
-	if (fugumt_ja_en){
-		status = ailiaSpeechOpenPostProcessFileA(net, "fugumt_ja_en_encoder_model.onnx", "fugumt_ja_en_decoder_model.onnx", "fugumt_en_ja_source.spm", "fugumt_en_ja_target.spm", NULL, AILIA_SPEECH_POST_PROCESS_TYPE_FUGUMT_JA_EN);
-		if (status != AILIA_STATUS_SUCCESS){
-			printf("ailiaSpeechOpenPostProcessFileA Error %d\n", status);
-		}
-	}
-
-	return status;
-}
-
-int main(int argc, char **argv){
 	const char *input_path="./demo.wav";
 	const char *model_type="small";
 	const char *language="auto";
 	const char *task="transcribe";
-	const char *vad="vad_enable";
-	const char *option="none";
-	const char *env="auto";
-	if(argc>=2){
-		input_path=argv[1];
-	}
-	if(argc>=3){
-		model_type=argv[2];
-	}
-	if(argc>=4){
-		language=argv[3];
-	}
-	if(argc>=5){
-		task=argv[4];
-	}
-	if(argc>=6){
-		vad=argv[5];
-	}
-	if(argc>=7){
-		option=argv[6];
-	}
-	if(argc>=8){
-		env=argv[7];
-	}
-	printf("Usage ./ailia_speech_sample input.wav [base/tiny/small/medium/large/large_v3] [auto/ja] [transcribe/translate/live] [vad_enable/vad_disable] [none/silent_threshold/prompt/constraint_char/constraint_word/dictionary/t5/fugumt_en_ja/fugumt_ja_en] [auto/cpu/blas/gpu]\n");
-	printf("Input path:%s\n", input_path);
-	printf("Model type:%s\n", model_type);
-	printf("Language type:%s\n", language);
-	printf("Task:%s\n", task);
-	printf("Vad:%s\n", vad);
-	printf("Option:%s\n", option);
-	printf("Env:%s\n", env);
-
-	if (strcmp(task, "transcribe") != 0 && strcmp(task, "translate") != 0 && strcmp(task, "live") != 0){
-		printf("task must be transcribe or translate or live\n");
-		return -1;
-	}
-	if (strcmp(vad, "vad_enable") != 0 && strcmp(vad, "vad_disable") != 0){
-		printf("vad must be transcribe or vad_enable or vad_disable\n");
-		return -1;
-	}
-	if (strcmp(option, "none") != 0 && strcmp(option, "silent_threshold") != 0 && strcmp(option, "prompt") != 0 && strcmp(option, "vad") != 0 && strcmp(option, "constraint_char") != 0 && strcmp(option, "constraint_word") != 0 && strcmp(option, "dictionary") != 0 && strcmp(option, "t5") != 0 && strcmp(option, "fugumt_en_ja") != 0 && strcmp(option, "fugumt_ja_en") != 0){
-		printf("option must be none or prompt or constraint_char or constraint_word or dictionary\n");
-		return -1;
-	}
-	if (strcmp(env, "auto") != 0 && strcmp(env, "cpu") != 0 && strcmp(env, "blas") != 0 && strcmp(env, "gpu") != 0){
-		printf("env must be auto or cput or blas or gpu\n");
-		return -1;
-	}
 
 	// Get environment
-	int env_id = get_environment_id(env);
-
+	int env_id = args_env_id;
+	
 	// Load wave file
 	int sampleRate,nChannels,nSamples;
 	std::vector<float> wave_buf = read_wave_file(input_path, &sampleRate, &nChannels, &nSamples);
-	int status;
 	if(wave_buf.size()==0){
 		printf("wav file not found or could not open %s\n", input_path);
 		return -1;
@@ -376,9 +300,9 @@ int main(int argc, char **argv){
 
 	AILIASpeechApiCallback callback = ailiaSpeechUtilGetCallback();
 
-	bool translate = (strcmp(task, "translate") == 0);
-	bool live_mode = (strcmp(task, "live") == 0);
-
+	bool translate = true;
+	bool live_mode = false;
+	
 	int task_id = (translate) ? AILIA_SPEECH_TASK_TRANSLATE:AILIA_SPEECH_TASK_TRANSCRIBE;
 	int flag = (live_mode) ? AILIA_SPEECH_FLAG_LIVE:AILIA_SPEECH_FLAG_NONE;
 	int memory_mode = AILIA_MEMORY_REDUCE_CONSTANT | AILIA_MEMORY_REDUCE_CONSTANT_WITH_INPUT_INITIALIZER | AILIA_MEMORY_REUSE_INTERSTAGE;
@@ -403,6 +327,7 @@ int main(int argc, char **argv){
 	status = ailiaSpeechOpenModelFileA(net, encoder.c_str(), decoder.c_str(), model_id);
 	if (status != AILIA_STATUS_SUCCESS){
 		printf("ailiaSpeechOpenModelFileA Error %d\n", status);
+		printf("required file : %s and %s\n", encoder.c_str(), decoder.c_str());
 		printf("%s\n", ailiaSpeechGetErrorDetail(net));
 		if (status == AILIA_STATUS_LICENSE_NOT_FOUND){
 			printf("License file not found.\n");
@@ -427,7 +352,7 @@ int main(int argc, char **argv){
 		}
 	}
 
-	bool vad_enable = (strcmp(vad, "vad_enable") == 0);
+	bool vad_enable = false;
 	if (vad_enable){
 		status = ailiaSpeechOpenVadFileA(net, "silero_vad.onnx", AILIA_SPEECH_VAD_TYPE_SILERO);
 		if (status != AILIA_STATUS_SUCCESS){
@@ -435,27 +360,10 @@ int main(int argc, char **argv){
 		}
 	}
 
-	status = set_options(net, option);
-
-	const float THRESHOLD_VOLUME = 0.01f;
-	const float THRESHOLD_VAD = 0.5f;
-	const float SPEECH_SEC = 1.0f;
-	const float NO_SPEECH_SEC = 1.0f;
-	bool silent_threshold = strcmp(option, "silent_threshold") == 0;
-	if (silent_threshold){
-		if (vad_enable){
-			status = ailiaSpeechSetSilentThreshold(net, THRESHOLD_VAD, SPEECH_SEC, NO_SPEECH_SEC);
-		}else{
-			status = ailiaSpeechSetSilentThreshold(net, THRESHOLD_VOLUME, SPEECH_SEC, NO_SPEECH_SEC);
-		}
-	}
-
-	bool post_process = (strcmp(option, "t5") == 0) || (strcmp(option, "fugumt_en_ja") == 0) || (strcmp(option, "fugumt_ja_en") == 0);
-
 	int push_i = 0;
 	while(true){
 		unsigned int complete = 0;
-		status = update(net, &wave_buf[0], nSamples, nChannels, sampleRate, push_i, complete, translate, live_mode, post_process);
+		status = update(net, &wave_buf[0], nSamples, nChannels, sampleRate, push_i, complete, translate, live_mode);
 		if (status != AILIA_STATUS_SUCCESS){
 			return -1;
 		}
