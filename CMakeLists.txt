@@ -51,6 +51,7 @@ add_subdirectory(natural_language_processing/fugumt-ja-en)
 add_subdirectory(natural_language_processing/fugumt-en-ja)
 add_subdirectory(natural_language_processing/sentence_transformers)
 add_subdirectory(natural_language_processing/t5_whisper_medical)
+add_subdirectory(natural_language_processing/multilingual-e5)
 
 add_subdirectory(object_detection/yolov3-tiny)
 add_subdirectory(object_detection/yolox)
