@@ -1,3 +1,0 @@
-This model was developed by ax Inc.
-This model only works with the ailia SDK.
-Only commercial licensee of ailia SDK may use this model for free.
