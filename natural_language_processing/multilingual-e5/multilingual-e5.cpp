@@ -41,7 +41,7 @@ bool debug = false;
 #define BENCHMARK_ITERS 5
 
 #define NUM_INPUTS 2
-#define NUM_OUTPUTS 2
+#define NUM_OUTPUTS 1
 #define NUM_STATE 768
 
 static std::string weight(WEIGHT_PATH);
@@ -395,7 +395,6 @@ std::vector<float> calc_embedding(AILIANetwork* net, struct AILIATokenizer *toke
 
 	std::vector<float> *outputs[NUM_OUTPUTS];
 	outputs[0] = &features;
-	outputs[1] = &temp;
 
 	std::vector<float> pool_features;
 	int status = forward(net, inputs, outputs);
@@ -494,10 +493,10 @@ int main(int argc, char **argv)
 		status = ailiaGetEnvironment(&env, i, AILIA_ENVIRONMENT_VERSION);
 		bool is_fp16 = (env->props & AILIA_ENVIRONMENT_PROPERTY_FP16) != 0;
 		PRINT_OUT("env_id : %d type : %d name : %s", env->id, env->type, env->name);
-		if (is_fp16){
-			PRINT_OUT(" (Warning : FP16 backend is not worked this model)\n");
-			continue;
-		}
+		//if (is_fp16){
+		//	PRINT_OUT(" (Warning : FP16 backend is not worked this model)\n");
+		//	continue;
+		//}
 		PRINT_OUT("\n");
 		if (args_env_id == env->id){
 			env_id = env->id;
