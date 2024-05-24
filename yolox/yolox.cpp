@@ -31,7 +31,7 @@
 #define WEIGHT_PATH "yolox_s.opt.onnx"
 #define MODEL_PATH  "yolox_s.opt.onnx.prototxt"
 
-#define IMAGE_PATH      "couple.jpg"
+#define IMAGE_PATH      "input.jpg"
 #define SAVE_IMAGE_PATH "output.png"
 
 #define MODEL_INPUT_WIDTH  640
