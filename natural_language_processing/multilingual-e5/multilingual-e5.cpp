@@ -439,13 +439,13 @@ static int recognize_from_text(AILIANetwork* net, struct AILIATokenizer *tokeniz
 	for (int i = 0; i < texts.size(); i++){
 		PRINT_OUT("\r%d/%d", i, texts.size());
 		fflush(stdout);
-		std::vector<float> embedding = calc_embedding(net, tokenizer, texts[i], false);
+		std::vector<float> embedding = calc_embedding(net, tokenizer, std::string("passage: ") + texts[i], false);
 		embeddings.push_back(embedding);
 	}
 	PRINT_OUT("\n");
 
 	// Embedding Query
-	std::vector<float> query_embedding = calc_embedding(net, tokenizer, input_text, true);
+	std::vector<float> query_embedding = calc_embedding(net, tokenizer, std::string("query: ") + input_text, true);
 	if (debug){
 		PRINT_OUT("Query norm %f\n", norm(query_embedding));
 	}
