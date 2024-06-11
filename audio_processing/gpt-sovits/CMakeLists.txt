@@ -1,15 +1,7 @@
 ﻿cmake_minimum_required(VERSION 3.1)
 
 set (PROJECT_NAME gpt-sovits)
-set (SRC_FILES ${PROJECT_NAME}.cpp ../util/wave_reader.cpp ../util/wave_writer.cpp)
-set (INCLUDE_PATH $ENV{AILIA_LIBRARY_PATH}/include ../util)
-if(WIN32)
-    set (LIBRARY_PATH $ENV{AILIA_LIBRARY_PATH}/windows/x64)
-elseif(APPLE)
-    set (LIBRARY_PATH $ENV{AILIA_LIBRARY_PATH}/mac)
-else(WIN32)
-    set (LIBRARY_PATH $ENV{AILIA_LIBRARY_PATH}/linux)
-endif(WIN32)
+set (SRC_FILES ${PROJECT_NAME}.cpp ../../util/wave_reader.cpp ../../util/wave_writer.cpp)
 set (CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
 message(${INCLUDE_PATH})
