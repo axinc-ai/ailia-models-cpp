@@ -14,6 +14,7 @@
 #include <vector>
 #include <string>
 #include <math.h>
+#include <string.h>
 
 #undef UNICODE
 
