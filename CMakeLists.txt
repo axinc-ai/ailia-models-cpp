@@ -27,7 +27,7 @@ elseif(UNIX AND CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
 elseif(UNIX AND CMAKE_SYSTEM_PROCESSOR STREQUAL "armv7-a")
     set (LIBRARY_PATH ${AILIA_LIBRARY_PATH}/linux/armeabi-v7a ${AILIA_AUDIO_PATH}/linux/armeabi-v7a ${AILIA_TOKENIZER_PATH}/linux/armeabi-v7a ${AILIA_SPEECH_PATH}/linux/armeabi-v7a)
 else(UNIX)
-    set (LIBRARY_PATH ${AILIA_LIBRARY_PATH}/linux/x64 ${AILIA_AUDIO_PATH}/linux/x64 ${AILIA_TOKENIZER_PATH}/linux ${AILIA_SPEECH_PATH}/linux)
+    set (LIBRARY_PATH ${AILIA_LIBRARY_PATH}/linux/x64 ${AILIA_AUDIO_PATH}/linux/x64 ${AILIA_TOKENIZER_PATH}/linux/x64 ${AILIA_SPEECH_PATH}/linux)
 endif(WIN32)
 
 add_subdirectory(audio_processing/clap)
