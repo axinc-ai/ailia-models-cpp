@@ -15,12 +15,15 @@
 #include <string>
 #include <math.h>
 #include <chrono>
+#include <unordered_map>
+#include <unordered_set>
+#include <regex>
 
 #undef UNICODE
 
 #include "ailia.h"
 
-bool debug = false;
+bool debug = true;
 bool debug_token = false;
 
 
@@ -44,15 +47,15 @@ bool debug_token = false;
 #define MODEL_ENCODER 1
 #define MODEL_DECODER 2
 
-const char *MODEL_NAME[3] = {"soundchoice-g2p_atn.onnx", "soundchoice-g2p_emb.onnx", "rnn_beam_searcher.onnx"}
+const char *MODEL_NAME[3] = {"soundchoice-g2p_emb.onnx", "soundchoice-g2p_atn.onnx", "rnn_beam_searcher.onnx"};
 
 static bool benchmark  = false;
 static int args_env_id = -1;
 
-#define REF_TOKEN_SIZE 11
+#define REF_TOKEN_SIZE 13
 
 std::string reference_text = "To be or not to be, that is the question";
-const char * reference_token[REF_TOKEN_SIZE] = {2000, 2022, 2030, 2025, 2000, 2022, 1010, 2008, 2003, 1996, 3160};
+const int reference_token[REF_TOKEN_SIZE] = {101, 2000, 2022, 2030, 2025, 2000, 2022, 1010, 2008, 2003, 1996, 3160, 102};
 
 
 // ======================
@@ -121,7 +124,7 @@ static int argument_parser(int argc, char **argv)
 		else if (arg[0] != '-') {
 			switch (status) {
 			case 1:
-				reference_wave = arg;
+				reference_text = std::string(arg);
 				break;
 			case 4:
 				args_env_id = atoi(arg.c_str());
@@ -239,234 +242,177 @@ void forward(AILIANetwork *ailia, std::vector<AILIATensor*> &inputs, std::vector
 	}
 }
 
-/*
-static std::vector<float> resample(std::vector<float> pcm, int targetSampleRate, int sampleRate, int nChannels)
-{
-	if (nChannels == 2){
-		for (int i = 0; i < pcm.size() / 2; i++){
-			pcm[i] = (pcm[i*2] + pcm[i*2+1])/2;
-		}
-		pcm.resize(pcm.size() / 2);
-	}
-
-	if(sampleRate != targetSampleRate){
-		int dst_n = 0;
-		int status = ailiaAudioGetResampleLen(&dst_n, targetSampleRate, pcm.size(), sampleRate);
-		if (status != AILIA_STATUS_SUCCESS) {
-			PRINT_ERR("ailiaAudioGetResampleLen failed %d\n", status);
-			throw;
-		}
-		std::vector<float> new_audio_waveform(dst_n);
-		status = ailiaAudioResample(&new_audio_waveform[0], &pcm[0], targetSampleRate, dst_n, sampleRate, pcm.size());
-		if (status != AILIA_STATUS_SUCCESS) {
-			PRINT_ERR("ailiaAudioResample failed %d\n", status);
-			throw;
-		}
-		return new_audio_waveform;
-	}
-
-	return pcm;
+std::string clean_pipeline(const std::string& txt, const std::unordered_set<char>& graphemes) {
+	std::regex RE_MULTI_SPACE(R"(\s{2,})");
+	std::string result = txt;
+	
+	// Convert to uppercase
+	std::transform(result.begin(), result.end(), result.begin(), ::toupper);
+	
+	// Remove characters not in graphemes
+	result.erase(
+		std::remove_if(result.begin(), result.end(), [&](char c) {
+			return graphemes.find(c) == graphemes.end();
+		}),
+		result.end()
+	);
+	
+	// Replace multiple spaces with a single space
+	result = std::regex_replace(result, RE_MULTI_SPACE, " ");
+	
+	return result;
 }
 
-static std::vector<float> cleaned_text_to_sequence(const char ** data, int size){
-	std::vector<float> sequence;
-	for (int i = 0; i < size; i++){
-		for (int s = 0; s < SYMBOLS_N; s++){
-			if (strcmp(data[i], SYMBOLS[s]) == 0){
-				if (debug_token){
-					PRINT_OUT("%d ", s);
-				}
-				sequence.push_back(s);
-				break;
-			}
+std::unordered_map<std::string, int> lab2ind = {
+   {"<bos>", 0}, {"<eos>", 1}, {"<unk>", 2}, {"A", 3}, {"B", 4}, {"C", 5}, {"D", 6}, {"E", 7},
+	{"F", 8}, {"G", 9}, {"H", 10}, {"I", 11}, {"J", 12}, {"K", 13}, {"L", 14}, {"M", 15}, {"N", 16},
+	{"O", 17}, {"P", 18}, {"Q", 19}, {"R", 20}, {"S", 21}, {"T", 22}, {"U", 23}, {"V", 24},
+	{"W", 25}, {"X", 26}, {"Y", 27}, {"Z", 28}, {"'", 29}, {" ", 30}
+};
+
+std::vector<int> grapheme_pipeline(const std::string& char_seq, bool uppercase = true) {
+	std::string char_seq_upper = char_seq;
+
+	if (uppercase) {
+		std::transform(char_seq_upper.begin(), char_seq_upper.end(), char_seq_upper.begin(), ::toupper);
+	}
+
+	std::vector<std::string> grapheme_list;
+	for (const char& c : char_seq_upper) {
+		std::string grapheme(1, c);  // convert char to string
+		if (lab2ind.find(grapheme) != lab2ind.end()) {
+			grapheme_list.push_back(grapheme);
 		}
 	}
-	if (debug_token){
-		PRINT_OUT("\n");
+
+	auto encode_label = [](const std::string& label) -> int {
+		try {
+			return lab2ind.at(label);
+		} catch (const std::out_of_range&) {
+			std::string unk_label = "<unk>";
+			return lab2ind.at(unk_label);
+		}
+	};
+
+	std::vector<int> grapheme_encoded_list;
+	for (const auto& grapheme : grapheme_list) {
+		grapheme_encoded_list.push_back(encode_label(grapheme));
 	}
-	return sequence;
+
+	std::string bos_label = "<bos>";
+	std::vector<int> grapheme_encoded = { lab2ind[bos_label] };
+	grapheme_encoded.insert(grapheme_encoded.end(), grapheme_encoded_list.begin(), grapheme_encoded_list.end());
+
+	int grapheme_len = grapheme_encoded.size();
+
+	// Convert grapheme_list of strings to list of single characters
+	std::vector<int> grapheme_char_list;
+	for (const std::string& grapheme : grapheme_list) {
+		grapheme_char_list.push_back(grapheme[0]);
+	}
+
+	//return {grapheme_char_list, grapheme_encoded_list, grapheme_encoded, grapheme_len};
+	return grapheme_encoded;
 }
 
-static AILIATensor ssl_forward(std::vector<float> ref_audio_16k, AILIANetwork* net)
-{
-	std::vector<AILIATensor*> inputs;
-	AILIATensor tensor;
-	tensor.data = ref_audio_16k;
-	tensor.shape.x = ref_audio_16k.size();
-	tensor.shape.y = 1;
-	tensor.shape.z = 1;
-	tensor.shape.w = 1;
-	tensor.shape.dim = 2;
-	inputs.push_back(&tensor);
-	std::vector<AILIATensor> outputs;
-	forward(net, inputs, outputs);
-	return outputs[0];
-}
+std::string encode_input(AILIANetwork *bert, const std::string& input_text) {
+	std::unordered_set<char> graphemes = {
+		'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
+		'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+		'\'', ' '
+	};
 
-int argmax(AILIATensor logits){
-	float max_p = 0.0f;
-	int max_i = 0;
-	for (int i = 0; i < logits.data.size(); i++){
-		if (logits.data[i] > max_p){
-			max_p = logits.data[i];
-			max_i = i;
-		}
-	}
-	return max_i;
-}
-
-static AILIATensor t2s_forward(AILIATensor ref_seq, AILIATensor text_seq, AILIATensor ref_bert, AILIATensor text_bert, AILIATensor ssl_content, AILIANetwork *net[MODEL_N]){
-	int hz = 50;
-	int max_sec = 54;
-	int early_stop_num = hz * max_sec;
-
-	std::vector<AILIATensor*> encoder_inputs;
-
-	encoder_inputs.push_back(&ref_seq);
-	encoder_inputs.push_back(&text_seq);
-	encoder_inputs.push_back(&ref_bert);
-	encoder_inputs.push_back(&text_bert);
-	encoder_inputs.push_back(&ssl_content);
-
-	if (debug_token){
-		PRINT_OUT("encoder\n");
+	std::string txt_cleaned = clean_pipeline(input_text, graphemes);
+	if (debug){
+		printf("input %s\n", input_text.c_str());
+		printf("clean %s\n", txt_cleaned.c_str());
 	}
 
-	std::vector<AILIATensor> encoder_outputs;
-	forward(net[MODEL_ENCODER], encoder_inputs, encoder_outputs);
-
-	AILIATensor top_k;
-	top_k.data = std::vector<float>(1);
-	top_k.data[0] = 5;
-	top_k.shape.x = 1;
-	top_k.shape.y = 1;
-	top_k.shape.z = 1;
-	top_k.shape.w = 1;
-	top_k.shape.dim = 1;
-
-	AILIATensor top_p;
-	top_p.data = std::vector<float>(1);
-	top_p.data[0] = 1.0;
-	top_p.shape.x = 1;
-	top_p.shape.y = 1;
-	top_p.shape.z = 1;
-	top_p.shape.w = 1;
-	top_p.shape.dim = 1;
-
-	AILIATensor temperature;
-	temperature.data = std::vector<float>(1);
-	temperature.data[0] = 1.0;
-	temperature.shape.x = 1;
-	temperature.shape.y = 1;
-	temperature.shape.z = 1;
-	temperature.shape.w = 1;
-	temperature.shape.dim = 1;
-
-	AILIATensor repetition_penalty;
-	repetition_penalty.data = std::vector<float>(1);
-	repetition_penalty.data[0] = 1.35;
-	repetition_penalty.shape.x = 1;
-	repetition_penalty.shape.y = 1;
-	repetition_penalty.shape.z = 1;
-	repetition_penalty.shape.w = 1;
-	repetition_penalty.shape.dim = 1;
-
-	std::vector<AILIATensor*> fs_decoder_inputs;
-	fs_decoder_inputs.push_back(&encoder_outputs[0]); // x
-	fs_decoder_inputs.push_back(&encoder_outputs[1]); // prompts
-	fs_decoder_inputs.push_back(&top_k);
-	fs_decoder_inputs.push_back(&top_p);
-	fs_decoder_inputs.push_back(&temperature);
-	fs_decoder_inputs.push_back(&repetition_penalty);
-
-	int prefix_len = encoder_outputs[1].shape.x;
-
-	if (debug_token){
-		PRINT_OUT("fs_decoder\n");
+	std::vector<int> grapheme_encoded = grapheme_pipeline(txt_cleaned);
+	if (debug){
+		printf("grapheme_encoded ");
+		for (int i = 0; i < grapheme_encoded.size(); i++){
+			printf("%d ", grapheme_encoded[i]);
+		}
+		printf("\n");
 	}
 
-	std::vector<AILIATensor> fs_decoder_outputs;
-	forward(net[MODEL_FS_DECODER], fs_decoder_inputs, fs_decoder_outputs);
+	std::vector<float> input_ids_data(REF_TOKEN_SIZE);
+	std::vector<float> attention_mask_data(REF_TOKEN_SIZE);
+	std::vector<float> token_type_ids_data(REF_TOKEN_SIZE);
 
-	std::vector<AILIATensor*> decoder_inputs;
-	decoder_inputs.push_back(&fs_decoder_outputs[0]); // y
-	decoder_inputs.push_back(&fs_decoder_outputs[1]); // k
-	decoder_inputs.push_back(&fs_decoder_outputs[2]); // v
-	decoder_inputs.push_back(&fs_decoder_outputs[3]); // y_emb
-	decoder_inputs.push_back(&fs_decoder_outputs[4]); // x_example
-	decoder_inputs.push_back(&top_k);
-	decoder_inputs.push_back(&top_p);
-	decoder_inputs.push_back(&temperature);
-	decoder_inputs.push_back(&repetition_penalty);
-
-	std::vector<AILIATensor> decoder_outputs;
-
-	const int EOS = 1024;
-	int idx = 1;
-	AILIATensor y = fs_decoder_outputs[0]; // output
-	for (; idx < 1500; idx++){
-		if (debug_token){
-			PRINT_OUT("decoder step %d ", idx);
-		}
-
-		auto start2 = std::chrono::high_resolution_clock::now();
-		forward(net[MODEL_DECODER], decoder_inputs, decoder_outputs);
-		auto end2 = std::chrono::high_resolution_clock::now();
-
-		decoder_inputs[0] = &decoder_outputs[0]; // y
-		decoder_inputs[1] = &decoder_outputs[1]; // k
-		decoder_inputs[2] = &decoder_outputs[2]; // v
-		decoder_inputs[3] = &decoder_outputs[3]; // y_emb
-		AILIATensor& logits = decoder_outputs[4];
-		AILIATensor& samples = decoder_outputs[5];
-
-		bool stop = false;
-		if (early_stop_num != -1 && y.shape.x - prefix_len > early_stop_num){
-			stop = true;
-		}
-		int token = argmax(logits);
-		if (token == EOS || samples.data[0] == EOS){
-			stop = true;
-		}
-
-		if (debug_token){
-			PRINT_OUT("token %d\n", token);
-		}
-
-		if (benchmark){
-            PRINT_OUT("ailia processing time %lld ms\n",  std::chrono::duration_cast<std::chrono::milliseconds>(end2 - start2).count());
-		}
-
-		if (stop){
-			y = decoder_outputs[0];
-			break;
-		}
+	for (int i = 0; i < REF_TOKEN_SIZE; i++){
+		input_ids_data[i] = reference_token[i];
+		attention_mask_data[i] = 1;
+		token_type_ids_data[i] = 0;
 	}
 
-	y.data = std::vector<float>(y.data.begin() + y.data.size() - idx, y.data.begin() + y.data.size() - 1); // dont store prefix and last eos element
-	y.shape.x = y.data.size();
-	y.shape.y = 1;
-	y.shape.z = 1;
-	y.shape.w = 1;
-	y.shape.dim = 3;
+	AILIATensor input_ids;
+	input_ids.data = input_ids_data;
+	input_ids.shape.x = input_ids_data.size();
+	input_ids.shape.y = 1;
+	input_ids.shape.z = 1;
+	input_ids.shape.w = 1;
+	input_ids.shape.dim = 2;
 
-	return y;
-}
+	AILIATensor attention_mask;
+	attention_mask.data = attention_mask_data;
+	attention_mask.shape.x = attention_mask_data.size();
+	attention_mask.shape.y = 1;
+	attention_mask.shape.z = 1;
+	attention_mask.shape.w = 1;
+	attention_mask.shape.dim = 2;
 
-AILIATensor vits_forward(AILIATensor text_seq, AILIATensor pred_semantic, AILIATensor ref_audio, AILIANetwork *net){
-	std::vector<AILIATensor*> vits_inputs;
-	vits_inputs.push_back(&text_seq);
-	vits_inputs.push_back(&pred_semantic);
-	vits_inputs.push_back(&ref_audio);
-	std::vector<AILIATensor> vits_outputs;
-	forward(net, vits_inputs, vits_outputs);
-	return vits_outputs[0];
+	AILIATensor token_type_ids;
+	token_type_ids.data = token_type_ids_data;
+	token_type_ids.shape.x = token_type_ids_data.size();
+	token_type_ids.shape.y = 1;
+	token_type_ids.shape.z = 1;
+	token_type_ids.shape.w = 1;
+	token_type_ids.shape.dim = 2;
+
+	std::vector<AILIATensor*> bert_inputs;
+	bert_inputs.push_back(&input_ids);
+	bert_inputs.push_back(&attention_mask);
+	bert_inputs.push_back(&token_type_ids);
+	std::vector<AILIATensor> bert_outputs;
+	forward(bert, bert_inputs, bert_outputs);
+
+	if (debug){
+		printf("hidden_states shape %d %d %d %d\n", bert_outputs[0].shape.x, bert_outputs[0].shape.y, bert_outputs[0].shape.z, bert_outputs[0].shape.w);
+		printf("hidden_states ");
+		for (int i = 0; i < 10; i++){
+			printf("%f ", bert_outputs[0].data[i]);
+		}
+		printf("\n");
+	}
+
+
+
+
+	return txt_cleaned;
+
+	/*
+	grapheme_list, grapheme_encoded_list, grapheme_encoded, grapheme_len = (
+		grapheme_pipeline(txt_cleaned)
+	)
+	intermediate["grapheme_list"] = grapheme_list
+	intermediate["grapheme_encoded_list"] = grapheme_encoded_list
+	intermediate["grapheme_encoded"] = grapheme_encoded
+
+	word_emb = word_emb_pipeline(models, input_text, grapheme_encoded, grapheme_len)
+	intermediate["word_emb"] = word_emb
+
+	return intermediate
+	*/
 }
-*/
 
 static int compute(AILIANetwork* net[MODEL_N])
 {
 	int status = AILIA_STATUS_SUCCESS;
+
+	encode_input(net[MODEL_BERT], reference_text);
+
 	/*
 	int sampleRate, nChannels, nSamples;
 	std::vector<float> wave = read_wave_file(reference_wave.c_str(), &sampleRate, &nChannels, &nSamples);
@@ -567,12 +513,12 @@ int main(int argc, char **argv)
 	for (unsigned int i = 0; i < env_count; i++) {
 		AILIAEnvironment* env;
 		status = ailiaGetEnvironment(&env, i, AILIA_ENVIRONMENT_VERSION);
-		bool is_fp16 = (env->props & AILIA_ENVIRONMENT_PROPERTY_FP16) != 0;
+		//bool is_fp16 = (env->props & AILIA_ENVIRONMENT_PROPERTY_FP16) != 0;
 		PRINT_OUT("env_id : %d type : %d name : %s", env->id, env->type, env->name);
-		if (is_fp16){
-			PRINT_OUT(" (Warning : FP16 backend is not worked this model)\n");
-			continue;
-		}
+		//if (is_fp16){
+		//	PRINT_OUT(" (Warning : FP16 backend is not worked this model)\n");
+		//	continue;
+		//}
 		PRINT_OUT("\n");
 		if (args_env_id == env->id){
 			env_id = env->id;
