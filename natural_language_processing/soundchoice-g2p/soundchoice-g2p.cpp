@@ -315,7 +315,7 @@ std::vector<int> grapheme_pipeline(const std::string& char_seq, bool uppercase =
 	return grapheme_encoded;
 }
 
-std::string encode_input(AILIANetwork *bert, const std::string& input_text) {
+AILIATensor encode_input(AILIANetwork *bert, const std::string& input_text) {
 	std::unordered_set<char> graphemes = {
 		'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
 		'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
@@ -388,105 +388,63 @@ std::string encode_input(AILIANetwork *bert, const std::string& input_text) {
 	}
 
 
+	const int BERT_EMBEDDING_SIZE = 768;
+
+	std::vector<float> word_emb(BERT_EMBEDDING_SIZE * bert_outputs[0].shape.y);
+	for (int i = 0; i < bert_outputs[0].shape.y; i++){
+		for (int j = 0; j < BERT_EMBEDDING_SIZE; j++){
+			for (int k = 0; k < 4; k++){
+				word_emb[i * BERT_EMBEDDING_SIZE + j] += bert_outputs[0].data[(bert_outputs[0].shape.w - 1 - k) * BERT_EMBEDDING_SIZE * bert_outputs[0].shape.y + i * BERT_EMBEDDING_SIZE + j];
+			}
+		}
+	}
+
+	int active_token_cnt = 0;
+	const int TOKEN_ID_CLS = 101;
+	const int TOKEN_ID_SEP = 102;
+	for (int i = 0; i < input_ids_data.size(); i++){
+		if (input_ids_data[i] != TOKEN_ID_CLS && input_ids_data[i] != TOKEN_ID_SEP){
+			active_token_cnt++;
+		}
+	}
+
+	std::vector<float> word_emb_trim(BERT_EMBEDDING_SIZE * active_token_cnt);
+	int output_p = 0;
+	for (int i = 0; i < input_ids_data.size(); i++){
+		if (!(input_ids_data[i] != TOKEN_ID_CLS && input_ids_data[i] != TOKEN_ID_SEP)){
+			continue;
+		}
+		for (int j = 0; j < BERT_EMBEDDING_SIZE; j++){
+			word_emb_trim[output_p * BERT_EMBEDDING_SIZE + j] = word_emb[i * BERT_EMBEDDING_SIZE + j];
+		}
+		output_p++;
+	}
+
+	if (debug){
+		printf("word_emb ");
+		for (int i = 0; i < 10; i++){
+			printf("%f ", word_emb_trim[i]);
+		}
+		printf("\n");
+	}
 
 
-	return txt_cleaned;
+	AILIATensor word_emb_tensor;
+	token_type_ids.data = word_emb_trim;
+	token_type_ids.shape.x = BERT_EMBEDDING_SIZE;
+	token_type_ids.shape.y = active_token_cnt;
+	token_type_ids.shape.z = 1;
+	token_type_ids.shape.w = 1;
+	token_type_ids.shape.dim = 3;
 
-	/*
-	grapheme_list, grapheme_encoded_list, grapheme_encoded, grapheme_len = (
-		grapheme_pipeline(txt_cleaned)
-	)
-	intermediate["grapheme_list"] = grapheme_list
-	intermediate["grapheme_encoded_list"] = grapheme_encoded_list
-	intermediate["grapheme_encoded"] = grapheme_encoded
-
-	word_emb = word_emb_pipeline(models, input_text, grapheme_encoded, grapheme_len)
-	intermediate["word_emb"] = word_emb
-
-	return intermediate
-	*/
+	return word_emb_tensor;
 }
 
 static int compute(AILIANetwork* net[MODEL_N])
 {
 	int status = AILIA_STATUS_SUCCESS;
 
-	encode_input(net[MODEL_BERT], reference_text);
-
-	/*
-	int sampleRate, nChannels, nSamples;
-	std::vector<float> wave = read_wave_file(reference_wave.c_str(), &sampleRate, &nChannels, &nSamples);
-	if (wave.size() == 0){
-		PRINT_ERR("Input file not found (%s)\n", reference_wave.c_str());
-		return AILIA_STATUS_ERROR_FILE_API;
-	}
-
-	// get sequence
-	if (debug_token){
-		PRINT_OUT("ref_seq\n");
-	}
-	AILIATensor ref_seq;
-	ref_seq.data = cleaned_text_to_sequence(REF_PHONES, REF_PHONES_SIZE);
-	ref_seq.shape.x = ref_seq.data.size();
-	ref_seq.shape.y = 1;
-	ref_seq.shape.z = 1;
-	ref_seq.shape.w = 1;
-	ref_seq.shape.dim = 2;
-
-	if (debug_token){
-		PRINT_OUT("text_seq\n");
-	}
-	AILIATensor text_seq;
-	text_seq.data = cleaned_text_to_sequence(TEXT_PHONES, TEXT_PHONES_SIZE);
-	text_seq.shape.x = text_seq.data.size();
-	text_seq.shape.y = 1;
-	text_seq.shape.z = 1;
-	text_seq.shape.w = 1;
-	text_seq.shape.dim = 2;
-
-	const int BERT_DIM = 1024;
-	AILIATensor ref_bert;
-	AILIATensor text_bert;
-
-	ref_bert.data = std::vector<float>(ref_seq.data.size() * BERT_DIM);
-	ref_bert.shape.x = BERT_DIM;
-	ref_bert.shape.y = ref_seq.data.size();
-	ref_bert.shape.z = 1;
-	ref_bert.shape.w = 1;
-	ref_bert.shape.dim = 2;
-
-	text_bert.data = std::vector<float>(text_seq.data.size() * BERT_DIM);
-	text_bert.shape.x = BERT_DIM;
-	text_bert.shape.y = text_seq.data.size();
-	text_bert.shape.z = 1;
-	text_bert.shape.w = 1;
-	text_bert.shape.dim = 2;
-
-	// resmaple to 16k and 32k
-	const int vits_hps_data_sampling_rate = 32000;
-	std::vector<float> zero_wav(vits_hps_data_sampling_rate * 0.3);
-	std::vector<float> wav16k = resample(wave, 16000, sampleRate, nChannels);
-	std::vector<float> ref_audio_16k = wav16k;
-	ref_audio_16k.insert(ref_audio_16k.end(), zero_wav.begin(), zero_wav.end());
-
-	AILIATensor ref_audio;	
-	ref_audio.data = resample(wave, vits_hps_data_sampling_rate, sampleRate, nChannels);
-	ref_audio.shape.x = ref_audio.data.size();
-	ref_audio.shape.y = 1;
-	ref_audio.shape.z = 1;
-	ref_audio.shape.w = 1;
-	ref_audio.shape.dim = 2;
-
-	// ssl
-	AILIATensor ssl_content = ssl_forward(ref_audio_16k, net[MODEL_SSL]);
-
-	// t2s
-	AILIATensor pred_semantic = t2s_forward(ref_seq, text_seq, ref_bert, text_bert, ssl_content, net);
-	AILIATensor audio = vits_forward(text_seq, pred_semantic, ref_audio, net[MODEL_VITS]);
-
-	// save
-	write_wave_file("output.wav", audio.data, vits_hps_data_sampling_rate);
-	*/
+	AILIATensor word_emb = encode_input(net[MODEL_BERT], reference_text);
 
 	PRINT_OUT("Program finished successfully.\n");
 
