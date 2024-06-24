@@ -52,11 +52,16 @@ const char *MODEL_NAME[3] = {"soundchoice-g2p_emb.onnx", "soundchoice-g2p_atn.on
 static bool benchmark  = false;
 static int args_env_id = -1;
 
-#define REF_TOKEN_SIZE 13
+//const int  REF_TOKEN_SIZE = 13;
+//std::string reference_text = "To be or not to be, that is the question";
+//const int reference_token[REF_TOKEN_SIZE] = {101, 2000, 2022, 2030, 2025, 2000, 2022, 1010, 2008, 2003, 1996, 3160, 102};
 
-std::string reference_text = "To be or not to be, that is the question";
-const int reference_token[REF_TOKEN_SIZE] = {101, 2000, 2022, 2030, 2025, 2000, 2022, 1010, 2008, 2003, 1996, 3160, 102};
+const int  REF_TOKEN_SIZE = 14;
+std::string reference_text = "To be or not to be, that is the questionary";
+const int reference_token[REF_TOKEN_SIZE] = {101, 2000, 2022, 2030, 2025, 2000, 2022, 1010, 2008, 2003, 1996, 3160, 5649, 102};
 
+const int BERT_EMBEDDING_SIZE = 768;
+const int BERT_HIDDEN_LAYER_N = 4;
 
 // ======================
 // Arguemnt Parser
@@ -315,7 +320,30 @@ std::vector<int> grapheme_pipeline(const std::string& char_seq, bool uppercase =
 	return grapheme_encoded;
 }
 
-AILIATensor encode_input(AILIANetwork *bert, const std::string& input_text) {
+static int is_special_token_or_continue(int token, std::vector<int> &continue_tokens){
+	const int TOKEN_ID_CLS = 101;
+	const int TOKEN_ID_SEP = 102;
+	if (token == TOKEN_ID_CLS || token == TOKEN_ID_SEP || std::count(continue_tokens.begin(), continue_tokens.end(), token) != 0){
+		return 1;
+	}
+	return 0;
+}
+
+static std::vector<float> expand_to_chars(std::vector<int> grapheme_encoded, std::vector<float> &word_emb){
+	std::vector<float> char_word_emb(grapheme_encoded.size() * BERT_EMBEDDING_SIZE);
+	int word_separator = 30; // space
+	int word_cnt = 0;
+	for (int i = 0; i < grapheme_encoded.size(); i++){
+		printf("%d ", grapheme_encoded[i]);
+		if (grapheme_encoded[i] == word_separator){
+			word_cnt++;
+		}
+	}
+	printf("word_cnt %d %d\n", word_cnt, word_emb.size() / BERT_EMBEDDING_SIZE);
+}
+
+
+AILIATensor encode_input(AILIANetwork *bert, const std::string& input_text, std::vector<int> &continue_tokens) {
 	std::unordered_set<char> graphemes = {
 		'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
 		'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
@@ -387,70 +415,110 @@ AILIATensor encode_input(AILIANetwork *bert, const std::string& input_text) {
 		printf("\n");
 	}
 
-
-	const int BERT_EMBEDDING_SIZE = 768;
-
-	std::vector<float> word_emb(BERT_EMBEDDING_SIZE * bert_outputs[0].shape.y);
+	// hidden layerの末尾4レイヤーの結果をマージする
+	std::vector<float> word_emb_with_special_token(BERT_EMBEDDING_SIZE * bert_outputs[0].shape.y);
 	for (int i = 0; i < bert_outputs[0].shape.y; i++){
 		for (int j = 0; j < BERT_EMBEDDING_SIZE; j++){
-			for (int k = 0; k < 4; k++){
-				word_emb[i * BERT_EMBEDDING_SIZE + j] += bert_outputs[0].data[(bert_outputs[0].shape.w - 1 - k) * BERT_EMBEDDING_SIZE * bert_outputs[0].shape.y + i * BERT_EMBEDDING_SIZE + j];
+			for (int k = 0; k < BERT_HIDDEN_LAYER_N; k++){
+				word_emb_with_special_token[i * BERT_EMBEDDING_SIZE + j] += bert_outputs[0].data[(bert_outputs[0].shape.w - 1 - k) * BERT_EMBEDDING_SIZE * bert_outputs[0].shape.y + i * BERT_EMBEDDING_SIZE + j];
 			}
 		}
 	}
 
-	int active_token_cnt = 0;
-	const int TOKEN_ID_CLS = 101;
-	const int TOKEN_ID_SEP = 102;
+	// wordに対応するトークン位置を取得する
+	std::vector<int> token_ids_word;
 	for (int i = 0; i < input_ids_data.size(); i++){
-		if (input_ids_data[i] != TOKEN_ID_CLS && input_ids_data[i] != TOKEN_ID_SEP){
-			active_token_cnt++;
+		if (!is_special_token_or_continue(input_ids_data[i], continue_tokens)){
+			token_ids_word.push_back(i);
 		}
 	}
 
-	std::vector<float> word_emb_trim(BERT_EMBEDDING_SIZE * active_token_cnt);
-	int output_p = 0;
-	for (int i = 0; i < input_ids_data.size(); i++){
-		if (!(input_ids_data[i] != TOKEN_ID_CLS && input_ids_data[i] != TOKEN_ID_SEP)){
-			continue;
-		}
+	// wordに対応するトークン位置のembeddingを取得する
+	std::vector<float> word_emb(BERT_EMBEDDING_SIZE * token_ids_word.size());
+	for (int i = 0; i < token_ids_word.size(); i++){
+		int id = token_ids_word[i];
 		for (int j = 0; j < BERT_EMBEDDING_SIZE; j++){
-			word_emb_trim[output_p * BERT_EMBEDDING_SIZE + j] = word_emb[i * BERT_EMBEDDING_SIZE + j];
+			word_emb[i * BERT_EMBEDDING_SIZE + j] = word_emb_with_special_token[id * BERT_EMBEDDING_SIZE + j];
 		}
-		output_p++;
 	}
 
 	if (debug){
+		printf("input_ids_data ");
+		for (int i = 0; i < input_ids_data.size(); i++){
+			printf("%d ", (int)input_ids_data[i]);
+		}
+		printf("\n");
+		printf("is_special_token_or_continue ");
+		for (int i = 0; i < input_ids_data.size(); i++){
+			printf("%d ", is_special_token_or_continue(input_ids_data[i], continue_tokens));
+		}
+		printf("\n");
+		printf("token_ids_word ");
+		for (int i = 0; i < token_ids_word.size(); i++){
+			printf("%d ", token_ids_word[i]);
+		}
+		printf("\n");
 		printf("word_emb ");
 		for (int i = 0; i < 10; i++){
-			printf("%f ", word_emb_trim[i]);
+			printf("%f ", word_emb[i]);
 		}
 		printf("\n");
 	}
 
+	// character単位のembeddingに変換する
+	std::vector<float> char_emb = expand_to_chars(grapheme_encoded, word_emb);
 
-	AILIATensor word_emb_tensor;
-	token_type_ids.data = word_emb_trim;
-	token_type_ids.shape.x = BERT_EMBEDDING_SIZE;
-	token_type_ids.shape.y = active_token_cnt;
-	token_type_ids.shape.z = 1;
-	token_type_ids.shape.w = 1;
-	token_type_ids.shape.dim = 3;
+	AILIATensor char_emb_tensor;
+	char_emb_tensor.data = char_emb;
+	char_emb_tensor.shape.x = BERT_EMBEDDING_SIZE;
+	char_emb_tensor.shape.y = grapheme_encoded.size();
+	char_emb_tensor.shape.z = 1;
+	char_emb_tensor.shape.w = 1;
+	char_emb_tensor.shape.dim = 3;
 
-	return word_emb_tensor;
+	return char_emb_tensor;
 }
 
-static int compute(AILIANetwork* net[MODEL_N])
+static int compute(AILIANetwork* net[MODEL_N], std::vector<int> &continue_tokens)
 {
 	int status = AILIA_STATUS_SUCCESS;
 
-	AILIATensor word_emb = encode_input(net[MODEL_BERT], reference_text);
+	AILIATensor word_emb = encode_input(net[MODEL_BERT], reference_text, continue_tokens);
 
 	PRINT_OUT("Program finished successfully.\n");
 
 	return AILIA_STATUS_SUCCESS;
 }
 
+static std::vector<int> load_vocab(const char *path_a)
+{
+	FILE *fp = NULL;
+	fp = fopen(path_a, "r");
+	if (fp == NULL){
+		throw("vocab file not found");
+	}
+	std::vector<char> line;
+	std::vector<int> continue_tokens;
+	int id = 0;
+	while(!feof(fp)){
+		char c = fgetc(fp);
+		line.push_back(c);
+		if (c == '\n'){
+			line[line.size() - 1] = '\0';
+			if (line.size() >= 2){
+				//printf("%s\n", &line[0]);
+				if (line[0] == '#' && line[1] == '#'){
+					continue_tokens.push_back(id);
+					//printf("%d ", id);
+				}
+			}
+			line.clear();
+			id++;
+		}
+	}
+	fclose(fp);
+	return continue_tokens;
+}
 
 int main(int argc, char **argv)
 {
@@ -528,8 +596,10 @@ int main(int argc, char **argv)
 		}
 	}
 
+	std::vector<int> continue_tokens = load_vocab("vocab.txt");
+
 	auto start2 = std::chrono::high_resolution_clock::now();
-	status = compute(ailia);
+	status = compute(ailia, continue_tokens);
 	auto end2 = std::chrono::high_resolution_clock::now();
 	if (benchmark){
 		PRINT_OUT("total processing time %lld ms\n",  std::chrono::duration_cast<std::chrono::milliseconds>(end2 - start2).count());
