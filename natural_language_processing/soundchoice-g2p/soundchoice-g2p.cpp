@@ -335,15 +335,25 @@ static std::vector<float> expand_to_chars(std::vector<int> grapheme_encoded, std
 	int word_cnt = 0;
 	for (int i = 0; i < grapheme_encoded.size(); i++){
 		printf("%d ", grapheme_encoded[i]);
+
+		if (word_emb.size() < BERT_EMBEDDING_SIZE * word_cnt){
+			throw("Word emb overflow");
+		}
+
+		for (int j = 0; j < BERT_EMBEDDING_SIZE; j++){
+			char_word_emb[BERT_EMBEDDING_SIZE * i + j] = word_emb[BERT_EMBEDDING_SIZE * word_cnt + j];
+		}
+
 		if (grapheme_encoded[i] == word_separator){
 			word_cnt++;
 		}
 	}
 	printf("word_cnt %d %d\n", word_cnt, word_emb.size() / BERT_EMBEDDING_SIZE);
+	return char_word_emb;
 }
 
 
-AILIATensor encode_input(AILIANetwork *bert, const std::string& input_text, std::vector<int> &continue_tokens) {
+std::vector<AILIATensor> encode_input(AILIANetwork *bert, const std::string& input_text, std::vector<int> &continue_tokens) {
 	std::unordered_set<char> graphemes = {
 		'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
 		'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
@@ -468,6 +478,28 @@ AILIATensor encode_input(AILIANetwork *bert, const std::string& input_text, std:
 	// character単位のembeddingに変換する
 	std::vector<float> char_emb = expand_to_chars(grapheme_encoded, word_emb);
 
+	if (debug){
+		printf("\n");
+		printf("char_emb ");
+		for (int i = 0; i < 10; i++){
+			printf("%f ", char_emb[i]);
+		}
+		printf("\n");
+	}
+
+	std::vector<float> grapheme_encoded_data(grapheme_encoded.size());
+	for (int i = 0; i < grapheme_encoded.size(); i++){
+		grapheme_encoded_data[i] = grapheme_encoded[i];
+	}
+
+	AILIATensor grapheme_encoded_tensor;
+	grapheme_encoded_tensor.data = grapheme_encoded_data;
+	grapheme_encoded_tensor.shape.x = grapheme_encoded.size();
+	grapheme_encoded_tensor.shape.y = 1;
+	grapheme_encoded_tensor.shape.z = 1;
+	grapheme_encoded_tensor.shape.w = 1;
+	grapheme_encoded_tensor.shape.dim = 2;
+
 	AILIATensor char_emb_tensor;
 	char_emb_tensor.data = char_emb;
 	char_emb_tensor.shape.x = BERT_EMBEDDING_SIZE;
@@ -476,14 +508,45 @@ AILIATensor encode_input(AILIANetwork *bert, const std::string& input_text, std:
 	char_emb_tensor.shape.w = 1;
 	char_emb_tensor.shape.dim = 3;
 
-	return char_emb_tensor;
+	std::vector<AILIATensor> outputs;
+	outputs.push_back(grapheme_encoded_tensor);
+	outputs.push_back(char_emb_tensor);
+
+	return outputs;
 }
 
 static int compute(AILIANetwork* net[MODEL_N], std::vector<int> &continue_tokens)
 {
 	int status = AILIA_STATUS_SUCCESS;
 
-	AILIATensor word_emb = encode_input(net[MODEL_BERT], reference_text, continue_tokens);
+	std::vector<AILIATensor> encode_outpus = encode_input(net[MODEL_BERT], reference_text, continue_tokens);
+
+	AILIATensor grapheme_encoded = encode_outpus[0];
+	AILIATensor word_emb = encode_outpus[1];
+
+	std::vector<AILIATensor*> atten_inputs;
+	atten_inputs.push_back(&grapheme_encoded);
+	atten_inputs.push_back(&word_emb);
+	std::vector<AILIATensor> atten_outputs;
+	forward(net[MODEL_ENCODER], atten_inputs, atten_outputs);
+
+	AILIATensor p_seq = atten_outputs[0];
+	AILIATensor encoder_outputs = atten_outputs[1];
+
+	if (debug){
+		printf("p_seq.shape %d %d %d %d\n", p_seq.shape.x, p_seq.shape.y, p_seq.shape.z, p_seq.shape.w);
+		printf("p_seq ");
+		for (int i = 0; i < 10; i++){
+			printf("%f ", p_seq.data[i]);
+		}
+		printf("\n");
+		printf("encoder_outputs.shape %d %d %d %d\n", encoder_outputs.shape.x, encoder_outputs.shape.y, encoder_outputs.shape.z, encoder_outputs.shape.w);
+		printf("encoder_outputs ");
+		for (int i = 0; i < 10; i++){
+			printf("%f ", encoder_outputs.data[i]);
+		}
+		printf("\n");
+	}
 
 	PRINT_OUT("Program finished successfully.\n");
 
