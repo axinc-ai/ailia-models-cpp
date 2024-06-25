@@ -2,7 +2,7 @@
 
 MODEL="g2p_en"
 FILE1="g2p_encoder.onnx"
-FILE2="g2p_encoder.decoder"
+FILE2="g2p_decoder.onnx"
 FILE3="cmudict"
 FILE4="homographs.en"
 

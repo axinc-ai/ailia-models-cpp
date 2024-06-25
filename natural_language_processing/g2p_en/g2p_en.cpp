@@ -18,6 +18,8 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <regex>
+#include <iostream>
+#include <map>
 
 #undef UNICODE
 
@@ -44,7 +46,7 @@ bool debug_token = false;
 #define MODEL_N 2
 
 #define MODEL_ENCODER 0
-#define MODEL_DECODER 0
+#define MODEL_DECODER 1
 
 const char *MODEL_NAME[2] = {"g2p_encoder.onnx", "g2p_decoder.onnx"};
 
@@ -505,11 +507,178 @@ std::vector<AILIATensor> encode_input(AILIANetwork *bert, const std::string& inp
 
 	return outputs;
 }
+*/
 
-static int compute(AILIANetwork* net[MODEL_N], std::vector<int> &continue_tokens)
+std::string toLowerCase(const std::string &text) {
+	std::string result = text;
+	std::transform(result.begin(), result.end(), result.begin(), ::tolower);
+	return result;
+}
+
+std::string regexReplace(const std::string &text, const std::regex &pattern, const std::string &replacement) {
+	return std::regex_replace(text, pattern, replacement);
+}
+
+std::vector<std::string> split(const std::string &text) {
+	std::vector<std::string> words;
+	std::string word;
+	for (char ch : text) {
+		if (isspace(ch)) {
+			if (!word.empty()) {
+				words.push_back(word);
+				word.clear();
+			}
+		} else {
+			word += ch;
+		}
+	}
+	if (!word.empty()) {
+		words.push_back(word);
+	}
+	return words;
+}
+
+std::vector<int> tokenize(const std::string& word) {
+	std::vector<std::string> graphemes;
+	graphemes = {"<pad>", "<unk>", "</s>",
+					"a", "b", "c", "d", "e", "f", "g",
+					"h", "i", "j", "k", "l", "m",
+					"n", "o", "p", "q", "r", "s",
+					"t", "u", "v", "w", "x", "y", "z"};
+	
+	std::map<std::string, int> g2idx;
+	for(size_t i = 0; i < graphemes.size(); ++i) {
+		g2idx[graphemes[i]] = i;
+	}
+
+	std::vector<int> x;
+	for (const auto& c : word) {
+		std::string s(1, c);
+		if (g2idx.find(s) != g2idx.end()) {
+			x.push_back(g2idx[s]);
+		} else {
+			x.push_back(g2idx["<unk>"]);
+		}
+	}
+	x.push_back(g2idx["</s>"]);
+	return x;
+}
+
+void predict(AILIANetwork* net[MODEL_N], const std::string &word){
+	std::vector<int> x = tokenize(word);
+	printf("tokens : ");
+	for (int i = 0; i < x.size(); i++){
+		printf("%d ", x[i]);
+	}
+	printf("\n");
+
+	std::vector<float> x_data(x.size());
+	for (int i = 0; i < x.size(); i++){
+		x_data[i] = x[i];
+	}
+
+	AILIATensor x_tensor;
+	x_tensor.data = x_data;
+	x_tensor.shape.x = x_data.size();
+	x_tensor.shape.y = 1;
+	x_tensor.shape.z = 1;
+	x_tensor.shape.w = 1;
+	x_tensor.shape.dim = 1;
+
+	std::vector<AILIATensor*> encoder_inputs;
+	encoder_inputs.push_back(&x_tensor);
+	std::vector<AILIATensor> encoder_outputs;
+	forward(net[MODEL_ENCODER], encoder_inputs, encoder_outputs);
+
+	/*
+	AILIATensor h_tensor = encoder_outputs[0];
+	*/
+
+	/*
+	std::vector<int> preds;
+	int pred = 2;
+
+	for (int i = 0; i < 20; i++){
+		std::vector<float> pred_data(1);
+		pred_data[0] = pred;
+
+		AILIATensor pred_tensor;
+		pred_tensor.data = pred_data;
+		pred_tensor.shape.x = pred_data.size();
+		pred_tensor.shape.y = 1;
+		pred_tensor.shape.z = 1;
+		pred_tensor.shape.w = 1;
+		pred_tensor.shape.dim = 1;
+
+		std::vector<AILIATensor*> decoder_inputs;
+		decoder_inputs.push_back(&pred_tensor);
+		decoder_inputs.push_back(&h_tensor);
+
+		std::vector<AILIATensor> decoder_outputs;
+		forward(net[MODEL_DECODER], decoder_inputs, decoder_outputs);
+
+		AILIATensor logits_tensor = decoder_outputs[0];
+		h_tensor = decoder_outputs[1];
+
+		printf("size %d\n", logits_tensor.shape.x);
+
+		float max_logits = -1;
+		for (int i = 0; i < logits_tensor.shape.x; i++){
+			if (max_logits < logits_tensor.data[i]){
+				max_logits = logits_tensor.data[i];
+				pred = i;
+			}
+		}
+
+		printf("pred:%d ",pred);
+
+		if (pred == 3){
+			break;
+		}
+
+		preds.push_back(pred);
+	}
+
+	printf("output\n");
+	for (int i = 0; i < preds.size(); i++){
+		printf("%d ", pred);
+	}
+	printf("\n");
+	*/
+
+
+	/*
+	preds = [self.idx2p.get(idx, "<unk>") for idx in preds]
+	return preds
+	*/
+}
+
+static int compute(AILIANetwork* net[MODEL_N])//, std::vector<int> &continue_tokens)
 {
 	int status = AILIA_STATUS_SUCCESS;
 
+	std::string text = "I'm an activationist.";
+
+	text = toLowerCase(text);
+	text = regexReplace(text, std::regex("[^ a-z'.,?!\\-]"), "");
+	text = regexReplace(text, std::regex("i\\.e\\."), "that is");
+	text = regexReplace(text, std::regex("e\\.g\\."), "for example");
+	std::string text2 = text;
+	text2 = regexReplace(text2, std::regex("\\."), " . ");
+	text2 = regexReplace(text2, std::regex(","), " , ");
+	text2 = regexReplace(text2, std::regex("!"), " ! ");
+	text2 = regexReplace(text2, std::regex("\\?"), " ? ");
+
+	std::vector<std::string> words = split(text2);
+
+	std::cout << text << std::endl;
+	for (const auto &word : words) {
+		std::cout << word << std::endl;
+
+		predict(net, word);
+	}
+
+	/*
 	std::vector<AILIATensor> encode_outpus = encode_input(net[MODEL_BERT], reference_text, continue_tokens);
 
 	AILIATensor grapheme_encoded = encode_outpus[0];
@@ -538,12 +707,14 @@ static int compute(AILIANetwork* net[MODEL_N], std::vector<int> &continue_tokens
 		}
 		printf("\n");
 	}
+	*/
 
 	PRINT_OUT("Program finished successfully.\n");
 
 	return AILIA_STATUS_SUCCESS;
 }
 
+/*
 static std::vector<int> load_vocab(const char *path_a)
 {
 	FILE *fp = NULL;
@@ -651,16 +822,14 @@ int main(int argc, char **argv)
 		}
 	}
 
-	/*
-	std::vector<int> continue_tokens = load_vocab("vocab.txt");
+	//std::vector<int> continue_tokens = load_vocab("vocab.txt");
 
 	auto start2 = std::chrono::high_resolution_clock::now();
-	status = compute(ailia, continue_tokens);
+	status = compute(ailia);//, continue_tokens);
 	auto end2 = std::chrono::high_resolution_clock::now();
 	if (benchmark){
 		PRINT_OUT("total processing time %lld ms\n",  std::chrono::duration_cast<std::chrono::milliseconds>(end2 - start2).count());
 	}
-	*/
 
 	for (int i = 0; i < MODEL_N; i++){
 		ailiaDestroy(ailia[i]);
