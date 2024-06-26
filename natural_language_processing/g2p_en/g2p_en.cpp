@@ -519,13 +519,13 @@ static int compute(AILIANetwork* net[MODEL_N], std::string text)
 
 	std::vector<std::string> words = split(text2);
 
-	std::vector<std::pair<std::string, std::string>> tokens; // Example tokens
 	std::unordered_map<std::string, std::tuple<std::vector<std::string>, std::vector<std::string>, std::string>> homograph2features = construct_homograph_dictionary("./");
 	std::unordered_map<std::string, std::vector<std::string>> cmudict = construct_cmu_dictionary("./");
 
-	for (const auto& word : words) {
-		tokens.push_back(std::pair<std::string, std::string>(word, word));
-	}
+	AveragedPerceptron model;
+	model.import_from_text();
+
+    std::vector<std::pair<std::string, std::string>> tokens = model.tag(words);
 
 	std::vector<std::string> prons;
 	for (const auto& token : tokens) {
@@ -533,6 +533,10 @@ static int compute(AILIANetwork* net[MODEL_N], std::string text)
 		std::string pos = token.second;
 		std::vector<std::string> pron;
 
+		if (debug){
+			printf("word:%s pos:%s\n", word.c_str(), pos.c_str());
+		}
+		
 		if (!std::regex_search(word, std::regex("[a-z]"))) {
 			pron.push_back(word);
 		} else if (homograph2features.find(word) != homograph2features.end()) {
@@ -567,8 +571,8 @@ static int compute(AILIANetwork* net[MODEL_N], std::string text)
 int main(int argc, char **argv)
 {
 	//test_expand();
-	test();
-	return 0;
+	test_averaged_perceptron();
+	//return 0;
 
 	int status = argument_parser(argc, argv);
 	if (status != AILIA_STATUS_SUCCESS) {
