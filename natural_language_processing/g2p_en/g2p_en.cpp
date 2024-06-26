@@ -55,6 +55,7 @@ bool debug_token = false;
 const char *MODEL_NAME[2] = {"g2p_encoder.onnx", "g2p_decoder.onnx"};
 
 static bool benchmark  = false;
+static bool verify  = false;
 static int args_env_id = -1;
 
 std::string reference_text = "To be or not to be, that is the questionary";
@@ -82,6 +83,7 @@ static void print_help()
 	PRINT_OUT("  -b, --benchmark       Running the inference on the same input 5 times to\n");
 	PRINT_OUT("                        measure execution performance. (Cannot be used in\n");
 	PRINT_OUT("                        video mode)\n");
+	PRINT_OUT("  -v, --verify          Check model output\n");
 	PRINT_OUT("  -e ENV_ID, --env_id ENV_ID\n");
 	PRINT_OUT("                        The backend environment id.\n");
 	return;
@@ -107,6 +109,9 @@ static int argument_parser(int argc, char **argv)
 			}
 			else if (arg == "-b" || arg == "--benchmark") {
 				benchmark = true;
+			}
+			else if (arg == "-v" || arg == "--verify") {
+				verify = true;
 			}
 			else if (arg == "-h" || arg == "--help") {
 				print_usage();
@@ -247,6 +252,8 @@ void forward(AILIANetwork *ailia, std::vector<AILIATensor*> &inputs, std::vector
 // dictionary functions
 // ======================
 
+std::string toLowerCase(const std::string &text);
+
 std::unordered_map<std::string, std::tuple<std::vector<std::string>, std::vector<std::string>, std::string>> construct_homograph_dictionary(const std::string& dirname) {
 	std::unordered_map<std::string, std::tuple<std::vector<std::string>, std::vector<std::string>, std::string>> homograph2features;
 	std::ifstream file(dirname + "/homographs.en");
@@ -262,7 +269,7 @@ std::unordered_map<std::string, std::tuple<std::vector<std::string>, std::vector
 			parts.push_back(part);
 		}
 
-		std::string headword = parts[0];
+		std::string headword = toLowerCase(parts[0]);
 		std::vector<std::string> pron1;
 		std::vector<std::string> pron2;
 		std::string pron1_str = parts[1];
@@ -299,9 +306,12 @@ std::unordered_map<std::string, std::vector<std::string>> construct_cmu_dictiona
 			lists.push_back(part);
 		}
 
-		std::string headword = lists[0];
+		std::string headword = toLowerCase(lists[0]);
 		std::vector<std::string> pron(lists.begin() + 2, lists.end());
-		cmudict[headword] = pron;
+		if (cmudict.find(headword) == cmudict.end()) {
+			cmudict[headword] = pron;
+		//	printf("%s %s\n", headword.c_str(), pron[0].c_str());
+		}
 	}
 	return cmudict;
 }
@@ -498,7 +508,7 @@ std::vector<std::string> predict(AILIANetwork* net[MODEL_N], const std::string &
 // main functions
 // ======================
 
-static int compute(AILIANetwork* net[MODEL_N], std::string text)
+static int compute(AILIANetwork* net[MODEL_N], std::string text, std::vector<std::string> expect)
 {
 	int status = AILIA_STATUS_SUCCESS;
 
@@ -533,7 +543,7 @@ static int compute(AILIANetwork* net[MODEL_N], std::string text)
 		std::string pos = token.second;
 		std::vector<std::string> pron;
 
-		if (debug){
+		if (false){
 			printf("word:%s pos:%s\n", word.c_str(), pos.c_str());
 		}
 		
@@ -548,6 +558,7 @@ static int compute(AILIANetwork* net[MODEL_N], std::string text)
 			}
 		} else if (cmudict.find(word) != cmudict.end()) {
 			pron = cmudict[word];
+			//printf("%s %s\n", word.c_str(), pron[0].c_str());
 		} else {
 			pron = predict(net, word);
 		}
@@ -555,13 +566,28 @@ static int compute(AILIANetwork* net[MODEL_N], std::string text)
 		for (int i = 0; i < pron.size(); i++) {
 			prons.push_back(pron[i]);
 		}
+		prons.push_back(" ");
 	}
+	prons.pop_back();
 
 	PRINT_OUT("Output :\n");
 	for (int i = 0; i < prons.size(); i++){
 		PRINT_OUT("%s ", prons[i].c_str());
 	}
 	PRINT_OUT("\n");
+
+	if (expect.size() > 0){
+		if (expect.size() != prons.size()){
+			PRINT_OUT("Invalid out token length %d vs %d\n", expect.size(), prons.size());
+			return -1;
+		}
+		for (int i = 0; i < prons.size(); i++){
+			if (expect[i] != prons[i]){
+				PRINT_OUT("Output token mismatch %s vs %s at %d\n", expect[i].c_str(), prons[i].c_str(), i);
+				return -1;
+			}
+		}
+	}
 
 	PRINT_OUT("Program finished successfully.\n");
 
@@ -649,7 +675,26 @@ int main(int argc, char **argv)
 	}
 
 	auto start2 = std::chrono::high_resolution_clock::now();
-	status = compute(ailia, reference_text);
+	if (verify){
+		status = compute(ailia, "I have $250 in my pocket.", {"AY1", " ", "HH", "AE1", "V", " ", "T", "UW1", " ", "HH", "AH1", "N", "D", "R", "AH0", "D", " ", "F", "IH1", "F", "T", "IY0", " ", "D", "AA1", "L", "ER0", "Z", " ", "IH0", "N", " ", "M", "AY1", " ", "P", "AA1", "K", "AH0", "T", " ", "."});
+		if (status != 0){
+			return status;
+		}
+		status = compute(ailia, "popular pets, e.g. cats and dogs", {"P", "AA1", "P", "Y", "AH0", "L", "ER0", " ", "P", "EH1", "T", "S", " ", ",", " ", "F", "AO1", "R", " ", "IH0", "G", "Z", "AE1", "M", "P", "AH0", "L", " ", "K", "AE1", "T", "S", " ", "AH0", "N", "D", " ", "D", "AA1", "G", "Z"});
+		if (status != 0){
+			return status;
+		}
+		status = compute(ailia, "I refuse to collect the refuse around here.", {"AY1", " ", "R", "IH0", "F", "Y", "UW1", "Z", " ", "T", "UW1", " ", "K", "AH0", "L", "EH1", "K", "T", " ", "DH", "AH0", " ", "R", "EH1", "F", "Y", "UW2", "Z", " ", "ER0", "AW1", "N", "D", " ", "HH", "IY1", "R", " ", "."});
+		if (status != 0){
+			return status;
+		}
+		status = compute(ailia, "I'm an activationist.", {"AY1", "M", " ", "AE1", "N", " ", "AE2", "K", "T", "IH0", "V", "EY1", "SH", "AH0", "N", "IH0", "S", "T", " ", "."});
+		if (status != 0){
+			return status;
+		}
+	}else{
+		status = compute(ailia, reference_text, std::vector<std::string>());
+	}
 	auto end2 = std::chrono::high_resolution_clock::now();
 	if (benchmark){
 		PRINT_OUT("total processing time %lld ms\n",  std::chrono::duration_cast<std::chrono::milliseconds>(end2 - start2).count());
