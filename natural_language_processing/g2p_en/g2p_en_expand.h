@@ -8,5 +8,9 @@
 *
 *******************************************************************/
 
+namespace ailiaG2P{
+
 std::string normalize_numbers(const std::string& text);
 int test_expand();
+
+}

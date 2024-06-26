@@ -21,145 +21,149 @@
 
 using namespace std;
 
-    string AveragedPerceptron::predict(const unordered_map<string, int>& features) {
-        unordered_map<string, double> scores;
-        for (const auto& feat : features) {
-            if (weights.find(feat.first) == weights.end() || feat.second == 0) continue;
-            const unordered_map<string, double>& label_weights = weights[feat.first];
-            for (const auto& lw : label_weights) {
-                scores[lw.first] += feat.second * lw.second;
-            }
-        }
-        string best_label = *max_element(classes.begin(), classes.end(), [&](const string& a, const string& b) {
-            return scores[a] < scores[b] || (scores[a] == scores[b] && a > b);
-        });
-        return best_label;
-    }
+namespace ailiaG2P{
 
-    void AveragedPerceptron::import_from_text() {
-        ifstream weights_file("averaged_perceptron_tagger_weights.txt");
-        string line, feat, label;
-        double weight;
-        while (getline(weights_file, feat)) {
-            getline(weights_file, label);
-            getline(weights_file, line);
-            istringstream iss(line);
-            iss >> weight;
-            weights[feat][label] = weight;
-        }
-        weights_file.close();
+string AveragedPerceptron::predict(const unordered_map<string, int>& features) {
+	unordered_map<string, double> scores;
+	for (const auto& feat : features) {
+		if (weights.find(feat.first) == weights.end() || feat.second == 0) continue;
+		const unordered_map<string, double>& label_weights = weights[feat.first];
+		for (const auto& lw : label_weights) {
+			scores[lw.first] += feat.second * lw.second;
+		}
+	}
+	string best_label = *max_element(classes.begin(), classes.end(), [&](const string& a, const string& b) {
+		return scores[a] < scores[b] || (scores[a] == scores[b] && a > b);
+	});
+	return best_label;
+}
 
-        ifstream tagdict_file("averaged_perceptron_tagger_tagdict.txt");
-        string tag, v;
-        while (getline(tagdict_file, tag)) {
-            getline(tagdict_file, v);
-            tagdict[tag] = v;
-        }
-        tagdict_file.close();
+void AveragedPerceptron::import_from_text() {
+	ifstream weights_file("averaged_perceptron_tagger_weights.txt");
+	string line, feat, label;
+	double weight;
+	while (getline(weights_file, feat)) {
+		getline(weights_file, label);
+		getline(weights_file, line);
+		istringstream iss(line);
+		iss >> weight;
+		weights[feat][label] = weight;
+	}
+	weights_file.close();
 
-        ifstream classes_file("averaged_perceptron_tagger_classes.txt");
-        while (getline(classes_file, line)) {
-            classes.insert(line);
-        }
-        classes_file.close();
-    }
+	ifstream tagdict_file("averaged_perceptron_tagger_tagdict.txt");
+	string tag, v;
+	while (getline(tagdict_file, tag)) {
+		getline(tagdict_file, v);
+		tagdict[tag] = v;
+	}
+	tagdict_file.close();
 
-    unordered_map<string, int> AveragedPerceptron::_get_features(int i, const string& word, const vector<string>& context, const string& prev, const string& prev2) {
-        unordered_map<string, int> features;
+	ifstream classes_file("averaged_perceptron_tagger_classes.txt");
+	while (getline(classes_file, line)) {
+		classes.insert(line);
+	}
+	classes_file.close();
+}
 
-        auto add = [&features](const string& name, const vector<string>& args = {}) {
-            string key = name;
-            for (const auto& arg : args) key += " " + arg;
-            features[key]++;
-        };
+unordered_map<string, int> AveragedPerceptron::_get_features(int i, const string& word, const vector<string>& context, const string& prev, const string& prev2) {
+	unordered_map<string, int> features;
 
-        i += START.size();
-        add("bias");
-        if (word.size() >= 3)
-            add("i suffix", { word.substr(word.size() - 3) });
-        else
-            add("i suffix", { word });
-        
-        add("i pref1", { word.empty() ? "" : std::string(1, word[0]) });
-        add("i-1 tag", { prev });
-        add("i-2 tag", { prev2 });
-        add("i tag+i-2 tag", { prev, prev2 });
-        
-        if (i < context.size()) add("i word", { context[i] });
-        if (i < context.size()) add("i-1 tag+i word", { prev, context[i] });
-        if (i - 1 >= 0 && i - 1 < context.size()) add("i-1 word", { context[i - 1] });
-        if (i - 1 >= 0 && i - 1 < context.size() && context[i - 1].size() >= 3) 
-            add("i-1 suffix", { context[i - 1].substr(context[i - 1].size() - 3) });
-        else if (i - 1 >= 0 && i - 1 < context.size())
-            add("i-1 suffix", { context[i - 1] });
-        
-        if (i - 2 >= 0 && i - 2 < context.size()) add("i-2 word", { context[i - 2] });
-        if (i + 1 < context.size()) add("i+1 word", { context[i + 1] });
-        if (i + 1 < context.size() && context[i + 1].size() >= 3) 
-            add("i+1 suffix", { context[i + 1].substr(context[i + 1].size() - 3) });
-        else if (i + 1 < context.size())
-            add("i+1 suffix", { context[i + 1] });
+	auto add = [&features](const string& name, const vector<string>& args = {}) {
+		string key = name;
+		for (const auto& arg : args) key += " " + arg;
+		features[key]++;
+	};
 
-        return features;
-    }
+	i += START.size();
+	add("bias");
+	if (word.size() >= 3)
+		add("i suffix", { word.substr(word.size() - 3) });
+	else
+		add("i suffix", { word });
+	
+	add("i pref1", { word.empty() ? "" : std::string(1, word[0]) });
+	add("i-1 tag", { prev });
+	add("i-2 tag", { prev2 });
+	add("i tag+i-2 tag", { prev, prev2 });
+	
+	if (i < context.size()) add("i word", { context[i] });
+	if (i < context.size()) add("i-1 tag+i word", { prev, context[i] });
+	if (i - 1 >= 0 && i - 1 < context.size()) add("i-1 word", { context[i - 1] });
+	if (i - 1 >= 0 && i - 1 < context.size() && context[i - 1].size() >= 3) 
+		add("i-1 suffix", { context[i - 1].substr(context[i - 1].size() - 3) });
+	else if (i - 1 >= 0 && i - 1 < context.size())
+		add("i-1 suffix", { context[i - 1] });
+	
+	if (i - 2 >= 0 && i - 2 < context.size()) add("i-2 word", { context[i - 2] });
+	if (i + 1 < context.size()) add("i+1 word", { context[i + 1] });
+	if (i + 1 < context.size() && context[i + 1].size() >= 3) 
+		add("i+1 suffix", { context[i + 1].substr(context[i + 1].size() - 3) });
+	else if (i + 1 < context.size())
+		add("i+1 suffix", { context[i + 1] });
 
-    string AveragedPerceptron::normalize(const string& word) {
-        if (word.find('-') != string::npos && word[0] != '-') {
-            return "!HYPHEN";
-        }
-        if (all_of(word.begin(), word.end(), ::isdigit) && word.size() == 4) {
-            return "!YEAR";
-        }
-        if (!word.empty() && ::isdigit(word[0])) {
-            return "!DIGITS";
-        }
-        string lower_word;
-        transform(word.begin(), word.end(), back_inserter(lower_word), ::tolower);
-        return lower_word;
-    }
+	return features;
+}
 
-    vector<pair<string, string>> AveragedPerceptron::tag(const vector<string>& tokens) {
-        string prev = START[0], prev2 = START[1];
-        vector<pair<string, string>> output;
+string AveragedPerceptron::normalize(const string& word) {
+	if (word.find('-') != string::npos && word[0] != '-') {
+		return "!HYPHEN";
+	}
+	if (all_of(word.begin(), word.end(), ::isdigit) && word.size() == 4) {
+		return "!YEAR";
+	}
+	if (!word.empty() && ::isdigit(word[0])) {
+		return "!DIGITS";
+	}
+	string lower_word;
+	transform(word.begin(), word.end(), back_inserter(lower_word), ::tolower);
+	return lower_word;
+}
 
-        vector<string> context = START;
-        for (const auto& w : tokens) {
-            context.push_back(normalize(w));
-        }
-        context.insert(context.end(), END.begin(), END.end());
+vector<pair<string, string>> AveragedPerceptron::tag(const vector<string>& tokens) {
+	string prev = START[0], prev2 = START[1];
+	vector<pair<string, string>> output;
 
-        for (int i = 0; i < tokens.size(); ++i) {
-            string word = tokens[i];
-            string tag;
-            if (tagdict.find(word) != tagdict.end()) {
-                tag = tagdict.at(word);
-            } else {
-                auto features = _get_features(i, word, context, prev, prev2);
-                tag = predict(features);
-            }
-            output.push_back({ word, tag });
+	vector<string> context = START;
+	for (const auto& w : tokens) {
+		context.push_back(normalize(w));
+	}
+	context.insert(context.end(), END.begin(), END.end());
 
-            prev2 = prev;
-            prev = tag;
-        }
+	for (int i = 0; i < tokens.size(); ++i) {
+		string word = tokens[i];
+		string tag;
+		if (tagdict.find(word) != tagdict.end()) {
+			tag = tagdict.at(word);
+		} else {
+			auto features = _get_features(i, word, context, prev, prev2);
+			tag = predict(features);
+		}
+		output.push_back({ word, tag });
 
-        return output;
-    }
+		prev2 = prev;
+		prev = tag;
+	}
+
+	return output;
+}
 
 int test_averaged_perceptron() {
-    AveragedPerceptron model;
+	AveragedPerceptron model;
 
-    model.import_from_text();
+	model.import_from_text();
 
-    vector<string> words = { "i'm", "an", "activationist", "." };
-    auto output = model.tag(words);
+	vector<string> words = { "i'm", "an", "activationist", "." };
+	auto output = model.tag(words);
 
-    for (const auto& pair : output) {
-        cout << "(" << pair.first << ", " << pair.second << "), ";
-    }
-    cout << endl;
+	for (const auto& pair : output) {
+		cout << "(" << pair.first << ", " << pair.second << "), ";
+	}
+	cout << endl;
 
-    //[("i'm", 'VB'), ('an', 'DT'), ('activationist', 'NN'), ('.', '.')]
+	//[("i'm", 'VB'), ('an', 'DT'), ('activationist', 'NN'), ('.', '.')]
 
-    return 0;
+	return 0;
+}
+
 }
