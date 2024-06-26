@@ -572,29 +572,38 @@ void predict(AILIANetwork* net[MODEL_N], const std::string &word){
 	}
 	printf("\n");
 
-	std::vector<float> x_data(x.size());
+	std::vector<float> h_data(256);
+
+	AILIATensor h_tensor;
+	h_tensor.data = h_data;
+	h_tensor.shape.x = 256;
+	h_tensor.shape.y = 1;
+	h_tensor.shape.z = 1;
+	h_tensor.shape.w = 1;
+	h_tensor.shape.dim = 2;
+
 	for (int i = 0; i < x.size(); i++){
-		x_data[i] = x[i];
+		std::vector<float> x_data(1);
+		x_data[0] = x[i];
+
+		AILIATensor x_tensor;
+		x_tensor.data = x_data;
+		x_tensor.shape.x = 1;
+		x_tensor.shape.y = 1;
+		x_tensor.shape.z = 1;
+		x_tensor.shape.w = 1;
+		x_tensor.shape.dim = 1;
+
+		std::vector<AILIATensor*> encoder_inputs;
+		encoder_inputs.push_back(&x_tensor);
+		encoder_inputs.push_back(&h_tensor);
+
+		std::vector<AILIATensor> encoder_outputs;
+		forward(net[MODEL_ENCODER], encoder_inputs, encoder_outputs);
+
+		h_tensor = encoder_outputs[0];
 	}
 
-	AILIATensor x_tensor;
-	x_tensor.data = x_data;
-	x_tensor.shape.x = x_data.size();
-	x_tensor.shape.y = 1;
-	x_tensor.shape.z = 1;
-	x_tensor.shape.w = 1;
-	x_tensor.shape.dim = 1;
-
-	std::vector<AILIATensor*> encoder_inputs;
-	encoder_inputs.push_back(&x_tensor);
-	std::vector<AILIATensor> encoder_outputs;
-	forward(net[MODEL_ENCODER], encoder_inputs, encoder_outputs);
-
-	/*
-	AILIATensor h_tensor = encoder_outputs[0];
-	*/
-
-	/*
 	std::vector<int> preds;
 	int pred = 2;
 
@@ -641,11 +650,9 @@ void predict(AILIANetwork* net[MODEL_N], const std::string &word){
 
 	printf("output\n");
 	for (int i = 0; i < preds.size(); i++){
-		printf("%d ", pred);
+		printf("%d ", preds[i]);
 	}
 	printf("\n");
-	*/
-
 
 	/*
 	preds = [self.idx2p.get(idx, "<unk>") for idx in preds]
