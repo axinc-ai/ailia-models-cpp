@@ -41,17 +41,14 @@ jobs:
     - name: Extract OpenCV
       run: |
         mkdir opencv
-        ./opencv.exe /SILENT /DIR=./opencv
+        ./opencv.exe -y -o./opencv
+        echo "OPENCV_PATH=$PWD/opencv/opencv/build" >> $GITHUB_ENV
       
-    - name: Set OpenCV environment variable
-      run: |
-        echo "OpenCV_DIR=$PWD/opencv/build" >> $GITHUB_ENV
-
     - name: Add MSBuild to PATH
       uses: microsoft/setup-msbuild@v1
 
     - name: Build
       working-directory: ${{env.GITHUB_WORKSPACE}}
       run: |
-        cmake -DOpenCV_DIR=${{ env.OpenCV_DIR }} .
+        cmake -DOpenCV_DIR="${{ env.OPENCV_PATH }}" .
         cmake --build .
