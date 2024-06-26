@@ -20,12 +20,14 @@
 #include <regex>
 #include <iostream>
 #include <map>
+#include <fstream>
+#include <sstream>
 
 #undef UNICODE
 
 #include "ailia.h"
 
-bool debug = true;
+bool debug = false;
 bool debug_token = false;
 
 
@@ -144,7 +146,7 @@ static int argument_parser(int argc, char **argv)
 }
 
 // ======================
-// Main functions
+// ailia functions
 // ======================
 
 void setErrorDetail(const char *func, const char *detail){
@@ -239,275 +241,72 @@ void forward(AILIANetwork *ailia, std::vector<AILIATensor*> &inputs, std::vector
 	}
 }
 
-/*
-std::string clean_pipeline(const std::string& txt, const std::unordered_set<char>& graphemes) {
-	std::regex RE_MULTI_SPACE(R"(\s{2,})");
-	std::string result = txt;
-	
-	// Convert to uppercase
-	std::transform(result.begin(), result.end(), result.begin(), ::toupper);
-	
-	// Remove characters not in graphemes
-	result.erase(
-		std::remove_if(result.begin(), result.end(), [&](char c) {
-			return graphemes.find(c) == graphemes.end();
-		}),
-		result.end()
-	);
-	
-	// Replace multiple spaces with a single space
-	result = std::regex_replace(result, RE_MULTI_SPACE, " ");
-	
-	return result;
+// ======================
+// dictionary functions
+// ======================
+
+std::unordered_map<std::string, std::tuple<std::vector<std::string>, std::vector<std::string>, std::string>> construct_homograph_dictionary(const std::string& dirname) {
+	std::unordered_map<std::string, std::tuple<std::vector<std::string>, std::vector<std::string>, std::string>> homograph2features;
+	std::ifstream file(dirname + "/homographs.en");
+
+	std::string line;
+	while (std::getline(file, line)) {
+		if (line[0] == '#') continue;
+
+		std::vector<std::string> parts;
+		std::stringstream ss(line);
+		std::string part;
+		while (std::getline(ss, part, '|')) {
+			parts.push_back(part);
+		}
+
+		std::string headword = parts[0];
+		std::vector<std::string> pron1;
+		std::vector<std::string> pron2;
+		std::string pron1_str = parts[1];
+		std::string pron2_str = parts[2];
+		std::string pos1 = parts[3];
+
+		std::stringstream pron1_ss(pron1_str);
+		std::stringstream pron2_ss(pron2_str);
+		std::string token;
+		while (pron1_ss >> token) {
+			pron1.push_back(token);
+		}
+		while (pron2_ss >> token) {
+			pron2.push_back(token);
+		}
+
+		homograph2features[headword] = std::make_tuple(pron1, pron2, pos1);
+	}
+	return homograph2features;
 }
 
-std::unordered_map<std::string, int> lab2ind = {
-   {"<bos>", 0}, {"<eos>", 1}, {"<unk>", 2}, {"A", 3}, {"B", 4}, {"C", 5}, {"D", 6}, {"E", 7},
-	{"F", 8}, {"G", 9}, {"H", 10}, {"I", 11}, {"J", 12}, {"K", 13}, {"L", 14}, {"M", 15}, {"N", 16},
-	{"O", 17}, {"P", 18}, {"Q", 19}, {"R", 20}, {"S", 21}, {"T", 22}, {"U", 23}, {"V", 24},
-	{"W", 25}, {"X", 26}, {"Y", 27}, {"Z", 28}, {"'", 29}, {" ", 30}
-};
+std::unordered_map<std::string, std::vector<std::string>> construct_cmu_dictionary(const std::string& dirname) {
+	std::unordered_map<std::string, std::vector<std::string>> cmudict;
+	std::ifstream file(dirname + "/cmudict");
 
-std::vector<int> grapheme_pipeline(const std::string& char_seq, bool uppercase = true) {
-	std::string char_seq_upper = char_seq;
+	std::string line;
+	while (std::getline(file, line)) {
+		if (line[0] == '#') continue;
 
-	if (uppercase) {
-		std::transform(char_seq_upper.begin(), char_seq_upper.end(), char_seq_upper.begin(), ::toupper);
-	}
-
-	std::vector<std::string> grapheme_list;
-	for (const char& c : char_seq_upper) {
-		std::string grapheme(1, c);  // convert char to string
-		if (lab2ind.find(grapheme) != lab2ind.end()) {
-			grapheme_list.push_back(grapheme);
+		std::vector<std::string> lists;
+		std::stringstream ss(line);
+		std::string part;
+		while (ss >> part) {
+			lists.push_back(part);
 		}
+
+		std::string headword = lists[0];
+		std::vector<std::string> pron(lists.begin() + 2, lists.end());
+		cmudict[headword] = pron;
 	}
-
-	auto encode_label = [](const std::string& label) -> int {
-		try {
-			return lab2ind.at(label);
-		} catch (const std::out_of_range&) {
-			std::string unk_label = "<unk>";
-			return lab2ind.at(unk_label);
-		}
-	};
-
-	std::vector<int> grapheme_encoded_list;
-	for (const auto& grapheme : grapheme_list) {
-		grapheme_encoded_list.push_back(encode_label(grapheme));
-	}
-
-	std::string bos_label = "<bos>";
-	std::vector<int> grapheme_encoded = { lab2ind[bos_label] };
-	grapheme_encoded.insert(grapheme_encoded.end(), grapheme_encoded_list.begin(), grapheme_encoded_list.end());
-
-	int grapheme_len = grapheme_encoded.size();
-
-	// Convert grapheme_list of strings to list of single characters
-	std::vector<int> grapheme_char_list;
-	for (const std::string& grapheme : grapheme_list) {
-		grapheme_char_list.push_back(grapheme[0]);
-	}
-
-	//return {grapheme_char_list, grapheme_encoded_list, grapheme_encoded, grapheme_len};
-	return grapheme_encoded;
+	return cmudict;
 }
 
-static int is_special_token_or_continue(int token, std::vector<int> &continue_tokens){
-	const int TOKEN_ID_CLS = 101;
-	const int TOKEN_ID_SEP = 102;
-	if (token == TOKEN_ID_CLS || token == TOKEN_ID_SEP || std::count(continue_tokens.begin(), continue_tokens.end(), token) != 0){
-		return 1;
-	}
-	return 0;
-}
-
-static std::vector<float> expand_to_chars(std::vector<int> grapheme_encoded, std::vector<float> &word_emb){
-	std::vector<float> char_word_emb(grapheme_encoded.size() * BERT_EMBEDDING_SIZE);
-	int word_separator = 30; // space
-	int word_cnt = 0;
-	for (int i = 0; i < grapheme_encoded.size(); i++){
-		printf("%d ", grapheme_encoded[i]);
-
-		if (word_emb.size() < BERT_EMBEDDING_SIZE * word_cnt){
-			throw("Word emb overflow");
-		}
-
-		for (int j = 0; j < BERT_EMBEDDING_SIZE; j++){
-			char_word_emb[BERT_EMBEDDING_SIZE * i + j] = word_emb[BERT_EMBEDDING_SIZE * word_cnt + j];
-		}
-
-		if (grapheme_encoded[i] == word_separator){
-			word_cnt++;
-		}
-	}
-	printf("word_cnt %d %d\n", word_cnt, word_emb.size() / BERT_EMBEDDING_SIZE);
-	return char_word_emb;
-}
-
-
-std::vector<AILIATensor> encode_input(AILIANetwork *bert, const std::string& input_text, std::vector<int> &continue_tokens) {
-	std::unordered_set<char> graphemes = {
-		'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
-		'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
-		'\'', ' '
-	};
-
-	std::string txt_cleaned = clean_pipeline(input_text, graphemes);
-	if (debug){
-		printf("input %s\n", input_text.c_str());
-		printf("clean %s\n", txt_cleaned.c_str());
-	}
-
-	std::vector<int> grapheme_encoded = grapheme_pipeline(txt_cleaned);
-	if (debug){
-		printf("grapheme_encoded ");
-		for (int i = 0; i < grapheme_encoded.size(); i++){
-			printf("%d ", grapheme_encoded[i]);
-		}
-		printf("\n");
-	}
-
-	std::vector<float> input_ids_data(REF_TOKEN_SIZE);
-	std::vector<float> attention_mask_data(REF_TOKEN_SIZE);
-	std::vector<float> token_type_ids_data(REF_TOKEN_SIZE);
-
-	for (int i = 0; i < REF_TOKEN_SIZE; i++){
-		input_ids_data[i] = reference_token[i];
-		attention_mask_data[i] = 1;
-		token_type_ids_data[i] = 0;
-	}
-
-	AILIATensor input_ids;
-	input_ids.data = input_ids_data;
-	input_ids.shape.x = input_ids_data.size();
-	input_ids.shape.y = 1;
-	input_ids.shape.z = 1;
-	input_ids.shape.w = 1;
-	input_ids.shape.dim = 2;
-
-	AILIATensor attention_mask;
-	attention_mask.data = attention_mask_data;
-	attention_mask.shape.x = attention_mask_data.size();
-	attention_mask.shape.y = 1;
-	attention_mask.shape.z = 1;
-	attention_mask.shape.w = 1;
-	attention_mask.shape.dim = 2;
-
-	AILIATensor token_type_ids;
-	token_type_ids.data = token_type_ids_data;
-	token_type_ids.shape.x = token_type_ids_data.size();
-	token_type_ids.shape.y = 1;
-	token_type_ids.shape.z = 1;
-	token_type_ids.shape.w = 1;
-	token_type_ids.shape.dim = 2;
-
-	std::vector<AILIATensor*> bert_inputs;
-	bert_inputs.push_back(&input_ids);
-	bert_inputs.push_back(&attention_mask);
-	bert_inputs.push_back(&token_type_ids);
-	std::vector<AILIATensor> bert_outputs;
-	forward(bert, bert_inputs, bert_outputs);
-
-	if (debug){
-		printf("hidden_states shape %d %d %d %d\n", bert_outputs[0].shape.x, bert_outputs[0].shape.y, bert_outputs[0].shape.z, bert_outputs[0].shape.w);
-		printf("hidden_states ");
-		for (int i = 0; i < 10; i++){
-			printf("%f ", bert_outputs[0].data[i]);
-		}
-		printf("\n");
-	}
-
-	// hidden layerの末尾4レイヤーの結果をマージする
-	std::vector<float> word_emb_with_special_token(BERT_EMBEDDING_SIZE * bert_outputs[0].shape.y);
-	for (int i = 0; i < bert_outputs[0].shape.y; i++){
-		for (int j = 0; j < BERT_EMBEDDING_SIZE; j++){
-			for (int k = 0; k < BERT_HIDDEN_LAYER_N; k++){
-				word_emb_with_special_token[i * BERT_EMBEDDING_SIZE + j] += bert_outputs[0].data[(bert_outputs[0].shape.w - 1 - k) * BERT_EMBEDDING_SIZE * bert_outputs[0].shape.y + i * BERT_EMBEDDING_SIZE + j];
-			}
-		}
-	}
-
-	// wordに対応するトークン位置を取得する
-	std::vector<int> token_ids_word;
-	for (int i = 0; i < input_ids_data.size(); i++){
-		if (!is_special_token_or_continue(input_ids_data[i], continue_tokens)){
-			token_ids_word.push_back(i);
-		}
-	}
-
-	// wordに対応するトークン位置のembeddingを取得する
-	std::vector<float> word_emb(BERT_EMBEDDING_SIZE * token_ids_word.size());
-	for (int i = 0; i < token_ids_word.size(); i++){
-		int id = token_ids_word[i];
-		for (int j = 0; j < BERT_EMBEDDING_SIZE; j++){
-			word_emb[i * BERT_EMBEDDING_SIZE + j] = word_emb_with_special_token[id * BERT_EMBEDDING_SIZE + j];
-		}
-	}
-
-	if (debug){
-		printf("input_ids_data ");
-		for (int i = 0; i < input_ids_data.size(); i++){
-			printf("%d ", (int)input_ids_data[i]);
-		}
-		printf("\n");
-		printf("is_special_token_or_continue ");
-		for (int i = 0; i < input_ids_data.size(); i++){
-			printf("%d ", is_special_token_or_continue(input_ids_data[i], continue_tokens));
-		}
-		printf("\n");
-		printf("token_ids_word ");
-		for (int i = 0; i < token_ids_word.size(); i++){
-			printf("%d ", token_ids_word[i]);
-		}
-		printf("\n");
-		printf("word_emb ");
-		for (int i = 0; i < 10; i++){
-			printf("%f ", word_emb[i]);
-		}
-		printf("\n");
-	}
-
-	// character単位のembeddingに変換する
-	std::vector<float> char_emb = expand_to_chars(grapheme_encoded, word_emb);
-
-	if (debug){
-		printf("\n");
-		printf("char_emb ");
-		for (int i = 0; i < 10; i++){
-			printf("%f ", char_emb[i]);
-		}
-		printf("\n");
-	}
-
-	std::vector<float> grapheme_encoded_data(grapheme_encoded.size());
-	for (int i = 0; i < grapheme_encoded.size(); i++){
-		grapheme_encoded_data[i] = grapheme_encoded[i];
-	}
-
-	AILIATensor grapheme_encoded_tensor;
-	grapheme_encoded_tensor.data = grapheme_encoded_data;
-	grapheme_encoded_tensor.shape.x = grapheme_encoded.size();
-	grapheme_encoded_tensor.shape.y = 1;
-	grapheme_encoded_tensor.shape.z = 1;
-	grapheme_encoded_tensor.shape.w = 1;
-	grapheme_encoded_tensor.shape.dim = 2;
-
-	AILIATensor char_emb_tensor;
-	char_emb_tensor.data = char_emb;
-	char_emb_tensor.shape.x = BERT_EMBEDDING_SIZE;
-	char_emb_tensor.shape.y = grapheme_encoded.size();
-	char_emb_tensor.shape.z = 1;
-	char_emb_tensor.shape.w = 1;
-	char_emb_tensor.shape.dim = 3;
-
-	std::vector<AILIATensor> outputs;
-	outputs.push_back(grapheme_encoded_tensor);
-	outputs.push_back(char_emb_tensor);
-
-	return outputs;
-}
-*/
+// ======================
+// normalize functions
+// ======================
 
 std::string toLowerCase(const std::string &text) {
 	std::string result = text;
@@ -564,13 +363,48 @@ std::vector<int> tokenize(const std::string& word) {
 	return x;
 }
 
-void predict(AILIANetwork* net[MODEL_N], const std::string &word){
-	std::vector<int> x = tokenize(word);
-	printf("tokens : ");
-	for (int i = 0; i < x.size(); i++){
-		printf("%d ", x[i]);
+// ======================
+// predict functions
+// ======================
+
+std::vector<std::string> get_phonemes() {
+	return {"<pad>", "<unk>", "<s>", "</s>", "AA0", "AA1", "AA2", "AE0", "AE1", "AE2", "AH0", "AH1", "AH2", "AO0", "AO1",
+			"AO2", "AW0", "AW1", "AW2", "AY0", "AY1", "AY2", "B", "CH", "D", "DH", "EH0", "EH1", "EH2", "ER0", "ER1", "ER2",
+			"EY0", "EY1", "EY2", "F", "G", "HH", "IH0", "IH1", "IH2", "IY0", "IY1", "IY2", "JH", "K", "L", "M", "N", "NG",
+			"OW0", "OW1", "OW2", "OY0", "OY1", "OY2", "P", "R", "S", "SH", "T", "TH", "UH0", "UH1", "UH2", "UW", "UW0", 
+			"UW1", "UW2", "V", "W", "Y", "Z", "ZH"};
+}
+
+std::unordered_map<int, std::string> get_idx2p(const std::vector<std::string>& phonemes) {
+	std::unordered_map<int, std::string> idx2p;
+	for (size_t i = 0; i < phonemes.size(); ++i) {
+		idx2p[i] = phonemes[i];
 	}
-	printf("\n");
+	return idx2p;
+}
+
+std::vector<std::string> preds_to_phonemes(const std::vector<int>& preds, const std::unordered_map<int, std::string>& idx2p) {
+	std::vector<std::string> phoneme_preds;
+	for (int idx : preds) {
+		if (idx2p.find(idx) != idx2p.end()) {
+			phoneme_preds.push_back(idx2p.at(idx));
+		} else {
+			phoneme_preds.push_back("<unk>");
+		}
+	}
+	return phoneme_preds;
+}
+
+
+std::vector<std::string> predict(AILIANetwork* net[MODEL_N], const std::string &word){
+	std::vector<int> x = tokenize(word);
+	if (debug){
+		printf("tokens : ");
+		for (int i = 0; i < x.size(); i++){
+			printf("%d ", x[i]);
+		}
+		printf("\n");
+	}
 
 	std::vector<float> h_data(256);
 
@@ -629,8 +463,6 @@ void predict(AILIANetwork* net[MODEL_N], const std::string &word){
 		AILIATensor logits_tensor = decoder_outputs[0];
 		h_tensor = decoder_outputs[1];
 
-		printf("size %d\n", logits_tensor.shape.x);
-
 		float max_logits = -1;
 		for (int i = 0; i < logits_tensor.shape.x; i++){
 			if (max_logits < logits_tensor.data[i]){
@@ -639,8 +471,6 @@ void predict(AILIANetwork* net[MODEL_N], const std::string &word){
 			}
 		}
 
-		printf("pred:%d ",pred);
-
 		if (pred == 3){
 			break;
 		}
@@ -648,23 +478,30 @@ void predict(AILIANetwork* net[MODEL_N], const std::string &word){
 		preds.push_back(pred);
 	}
 
-	printf("output\n");
-	for (int i = 0; i < preds.size(); i++){
-		printf("%d ", preds[i]);
+	if (debug){
+		printf("output\n");
+		for (int i = 0; i < preds.size(); i++){
+			printf("%d ", preds[i]);
+		}
+		printf("\n");
 	}
-	printf("\n");
 
-	/*
-	preds = [self.idx2p.get(idx, "<unk>") for idx in preds]
-	return preds
-	*/
+	std::vector<std::string> phonemes = get_phonemes();
+	std::unordered_map<int, std::string> idx2p = get_idx2p(phonemes);
+	std::vector<std::string> phoneme_preds = preds_to_phonemes(preds, idx2p);
+	return phoneme_preds;
 }
 
-static int compute(AILIANetwork* net[MODEL_N])//, std::vector<int> &continue_tokens)
+// ======================
+// main functions
+// ======================
+
+static int compute(AILIANetwork* net[MODEL_N], std::string text)
 {
 	int status = AILIA_STATUS_SUCCESS;
 
-	std::string text = "I'm an activationist.";
+	printf("Input : \n");
+	printf("%s\n", text.c_str());
 
 	text = toLowerCase(text);
 	text = regexReplace(text, std::regex("[^ a-z'.,?!\\-]"), "");
@@ -678,80 +515,50 @@ static int compute(AILIANetwork* net[MODEL_N])//, std::vector<int> &continue_tok
 
 	std::vector<std::string> words = split(text2);
 
-	std::cout << text << std::endl;
-	for (const auto &word : words) {
-		std::cout << word << std::endl;
+	std::vector<std::pair<std::string, std::string>> tokens; // Example tokens
+	std::unordered_map<std::string, std::tuple<std::vector<std::string>, std::vector<std::string>, std::string>> homograph2features = construct_homograph_dictionary("./");
+	std::unordered_map<std::string, std::vector<std::string>> cmudict = construct_cmu_dictionary("./");
 
-		predict(net, word);
+	for (const auto& word : words) {
+		tokens.push_back(std::pair<std::string, std::string>(word, word));
 	}
 
-	/*
-	std::vector<AILIATensor> encode_outpus = encode_input(net[MODEL_BERT], reference_text, continue_tokens);
+	std::vector<std::string> prons;
+	for (const auto& token : tokens) {
+		std::string word = token.first;
+		std::string pos = token.second;
+		std::vector<std::string> pron;
 
-	AILIATensor grapheme_encoded = encode_outpus[0];
-	AILIATensor word_emb = encode_outpus[1];
-
-	std::vector<AILIATensor*> atten_inputs;
-	atten_inputs.push_back(&grapheme_encoded);
-	atten_inputs.push_back(&word_emb);
-	std::vector<AILIATensor> atten_outputs;
-	forward(net[MODEL_ENCODER], atten_inputs, atten_outputs);
-
-	AILIATensor p_seq = atten_outputs[0];
-	AILIATensor encoder_outputs = atten_outputs[1];
-
-	if (debug){
-		printf("p_seq.shape %d %d %d %d\n", p_seq.shape.x, p_seq.shape.y, p_seq.shape.z, p_seq.shape.w);
-		printf("p_seq ");
-		for (int i = 0; i < 10; i++){
-			printf("%f ", p_seq.data[i]);
+		if (!std::regex_search(word, std::regex("[a-z]"))) {
+			pron.push_back(word);
+		} else if (homograph2features.find(word) != homograph2features.end()) {
+			auto [pron1, pron2, pos1] = homograph2features[word];
+			if (pos.find(pos1) == 0) {
+				pron = pron1;
+			} else {
+				pron = pron2;
+			}
+		} else if (cmudict.find(word) != cmudict.end()) {
+			pron = cmudict[word];
+		} else {
+			pron = predict(net, word);
 		}
-		printf("\n");
-		printf("encoder_outputs.shape %d %d %d %d\n", encoder_outputs.shape.x, encoder_outputs.shape.y, encoder_outputs.shape.z, encoder_outputs.shape.w);
-		printf("encoder_outputs ");
-		for (int i = 0; i < 10; i++){
-			printf("%f ", encoder_outputs.data[i]);
+
+		for (int i = 0; i < pron.size(); i++) {
+			prons.push_back(pron[i]);
 		}
-		printf("\n");
 	}
-	*/
+
+	PRINT_OUT("Output :\n");
+	for (int i = 0; i < prons.size(); i++){
+		PRINT_OUT("%s ", prons[i].c_str());
+	}
+	PRINT_OUT("\n");
 
 	PRINT_OUT("Program finished successfully.\n");
 
 	return AILIA_STATUS_SUCCESS;
 }
-
-/*
-static std::vector<int> load_vocab(const char *path_a)
-{
-	FILE *fp = NULL;
-	fp = fopen(path_a, "r");
-	if (fp == NULL){
-		throw("vocab file not found");
-	}
-	std::vector<char> line;
-	std::vector<int> continue_tokens;
-	int id = 0;
-	while(!feof(fp)){
-		char c = fgetc(fp);
-		line.push_back(c);
-		if (c == '\n'){
-			line[line.size() - 1] = '\0';
-			if (line.size() >= 2){
-				//printf("%s\n", &line[0]);
-				if (line[0] == '#' && line[1] == '#'){
-					continue_tokens.push_back(id);
-					//printf("%d ", id);
-				}
-			}
-			line.clear();
-			id++;
-		}
-	}
-	fclose(fp);
-	return continue_tokens;
-}
-*/
 
 int main(int argc, char **argv)
 {
@@ -829,10 +636,8 @@ int main(int argc, char **argv)
 		}
 	}
 
-	//std::vector<int> continue_tokens = load_vocab("vocab.txt");
-
 	auto start2 = std::chrono::high_resolution_clock::now();
-	status = compute(ailia);//, continue_tokens);
+	status = compute(ailia, reference_text);
 	auto end2 = std::chrono::high_resolution_clock::now();
 	if (benchmark){
 		PRINT_OUT("total processing time %lld ms\n",  std::chrono::duration_cast<std::chrono::milliseconds>(end2 - start2).count());
