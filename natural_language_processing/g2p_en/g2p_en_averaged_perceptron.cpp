@@ -17,7 +17,7 @@
 #include <unordered_set>
 #include <string>
 #include <algorithm>
-#include "averaged_perceptron.h"
+#include "g2p_en_averaged_perceptron.h"
 
 using namespace std;
 

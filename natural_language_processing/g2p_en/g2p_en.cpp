@@ -26,8 +26,9 @@
 #undef UNICODE
 
 #include "ailia.h"
-#include "averaged_perceptron.h"
-#include "expand.h"
+
+#include "g2p_en_averaged_perceptron.h"
+#include "g2p_en_expand.h"
 
 bool debug = false;
 bool debug_token = false;
