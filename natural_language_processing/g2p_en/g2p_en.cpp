@@ -26,6 +26,7 @@
 #undef UNICODE
 
 #include "ailia.h"
+#include "averaged_perceptron.h"
 
 bool debug = false;
 bool debug_token = false;
