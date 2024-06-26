@@ -8,4 +8,5 @@
 *
 *******************************************************************/
 
-//void expand(void);
+std::string normalize_numbers(const std::string& text);
+int test_expand();

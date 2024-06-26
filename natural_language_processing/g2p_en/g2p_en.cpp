@@ -27,6 +27,7 @@
 
 #include "ailia.h"
 #include "averaged_perceptron.h"
+#include "expand.h"
 
 bool debug = false;
 bool debug_token = false;
@@ -504,6 +505,8 @@ static int compute(AILIANetwork* net[MODEL_N], std::string text)
 	printf("Input : \n");
 	printf("%s\n", text.c_str());
 
+	text = normalize_numbers(text);
+
 	text = toLowerCase(text);
 	text = regexReplace(text, std::regex("[^ a-z'.,?!\\-]"), "");
 	text = regexReplace(text, std::regex("i\\.e\\."), "that is");
@@ -563,6 +566,7 @@ static int compute(AILIANetwork* net[MODEL_N], std::string text)
 
 int main(int argc, char **argv)
 {
+	//test_expand();
 	test();
 	return 0;
 
