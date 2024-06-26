@@ -12,6 +12,10 @@ link_directories(${LIBRARY_PATH})
 
 add_executable(${PROJECT_NAME} ${SRC_FILES})
 
+if(UNIX AND NOT APPLE)
+	target_link_libraries(${PROJECT_NAME} PRIVATE "-pthread") # for ailia SDK 1.4.0
+endif()
+
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_11)
 target_link_libraries(${PROJECT_NAME} ailia)
 set (CMAKE_INSTALL_PREFIX ${CMAKE_SOURCE_DIR})

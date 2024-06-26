@@ -33,9 +33,8 @@ jobs:
     - name: Show Xcode version
       run: xcodebuild -version
 
-    - name: Install cmake
+    - name: Install opencv
       run: |
-        brew install cmake
         brew install opencv
 
     - name: Build
