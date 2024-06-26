@@ -5,6 +5,9 @@ FILE1="g2p_encoder.onnx"
 FILE2="g2p_decoder.onnx"
 FILE3="cmudict"
 FILE4="homographs.en"
+FILE5="averaged_perceptron_tagger_classes.txt"
+FILE6="averaged_perceptron_tagger_tagdict.txt"
+FILE7="averaged_perceptron_tagger_weights.txt"
 
 #download
 if [ ! "$1" = "-h" ] && [ ! "$1" = "--help" ]; then
@@ -23,6 +26,18 @@ if [ ! "$1" = "-h" ] && [ ! "$1" = "--help" ]; then
     if [ ! -e ${FILE4} ]; then
         echo "Downloading onnx file... save path: ${FILE4}"
         curl https://storage.googleapis.com/ailia-models/${MODEL}/${FILE4} -o ${FILE4}
+    fi
+    if [ ! -e ${FILE5} ]; then
+        echo "Downloading onnx file... save path: ${FILE5}"
+        curl https://storage.googleapis.com/ailia-models/${MODEL}/${FILE5} -o ${FILE5}
+    fi
+    if [ ! -e ${FILE6} ]; then
+        echo "Downloading onnx file... save path: ${FILE6}"
+        curl https://storage.googleapis.com/ailia-models/${MODEL}/${FILE6} -o ${FILE6}
+    fi
+    if [ ! -e ${FILE7} ]; then
+        echo "Downloading onnx file... save path: ${FILE7}"
+        curl https://storage.googleapis.com/ailia-models/${MODEL}/${FILE7} -o ${FILE7}
     fi
     echo "ONNX file are prepared!"
 fi

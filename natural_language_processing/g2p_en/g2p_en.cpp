@@ -563,6 +563,9 @@ static int compute(AILIANetwork* net[MODEL_N], std::string text)
 
 int main(int argc, char **argv)
 {
+	test();
+	return 0;
+
 	int status = argument_parser(argc, argv);
 	if (status != AILIA_STATUS_SUCCESS) {
 		return -1;
