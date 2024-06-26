@@ -38,8 +38,8 @@ string AveragedPerceptron::predict(const unordered_map<string, int>& features) {
 	return best_label;
 }
 
-void AveragedPerceptron::import_from_text() {
-	ifstream weights_file("averaged_perceptron_tagger_weights.txt");
+void AveragedPerceptron::import_from_text(const char *weight_a, const wchar_t *weight_w, const char *tagdict_a, const wchar_t *tagdict_w, const char *classes_a, const wchar_t *classes_w) {
+	ifstream weights_file(weight_a);
 	string line, feat, label;
 	double weight;
 	while (getline(weights_file, feat)) {
@@ -51,7 +51,7 @@ void AveragedPerceptron::import_from_text() {
 	}
 	weights_file.close();
 
-	ifstream tagdict_file("averaged_perceptron_tagger_tagdict.txt");
+	ifstream tagdict_file(tagdict_a);
 	string tag, v;
 	while (getline(tagdict_file, tag)) {
 		getline(tagdict_file, v);
@@ -59,7 +59,7 @@ void AveragedPerceptron::import_from_text() {
 	}
 	tagdict_file.close();
 
-	ifstream classes_file("averaged_perceptron_tagger_classes.txt");
+	ifstream classes_file(classes_a);
 	while (getline(classes_file, line)) {
 		classes.insert(line);
 	}
@@ -148,22 +148,30 @@ vector<pair<string, string>> AveragedPerceptron::tag(const vector<string>& token
 	return output;
 }
 
-int test_averaged_perceptron() {
+void test_averaged_perceptron() {
 	AveragedPerceptron model;
 
-	model.import_from_text();
+	model.import_from_text("averaged_perceptron_tagger_weights.txt", NULL, "averaged_perceptron_tagger_tagdict.txt", NULL, "averaged_perceptron_tagger_classes.txt", NULL);
 
 	vector<string> words = { "i'm", "an", "activationist", "." };
 	auto output = model.tag(words);
 
-	for (const auto& pair : output) {
-		cout << "(" << pair.first << ", " << pair.second << "), ";
+	vector<pair<string, string>> expect;
+	expect.push_back(pair<string, string>({"i'm", "VB"}));
+	expect.push_back(pair<string, string>({"an", "DT"}));
+	expect.push_back(pair<string, string>({"activationist", "NN"}));
+	expect.push_back(pair<string, string>({".", "."}));
+
+	for (int i = 0; i < expect.size(); i++){
+		if (output[i] != expect[i]){
+			for (const auto& pair : output) {
+				cout << "(" << pair.first << ", " << pair.second << "), ";
+			}
+			cout << endl;
+
+			throw("verify error at test_averaged_perceptron");
+		}
 	}
-	cout << endl;
-
-	//[("i'm", 'VB'), ('an', 'DT'), ('activationist', 'NN'), ('.', '.')]
-
-	return 0;
 }
 
 }

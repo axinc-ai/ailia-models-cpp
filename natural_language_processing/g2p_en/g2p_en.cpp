@@ -13,20 +13,14 @@
 #include <time.h>
 #include <vector>
 #include <string>
-#include <math.h>
 #include <chrono>
-#include <unordered_map>
-#include <unordered_set>
-#include <regex>
-#include <iostream>
-#include <map>
-#include <fstream>
-#include <sstream>
 
 #undef UNICODE
 
 #include "ailia.h"
 #include "g2p_en_model.h"
+#include "g2p_en_expand.h"
+#include "g2p_en_averaged_perceptron.h"
 
 using namespace ailiaG2P;
 
@@ -41,8 +35,6 @@ using namespace ailiaG2P;
 #define PRINT_OUT(...) fprintf(stdout, __VA_ARGS__)
 #define PRINT_ERR(...) fprintf(stderr, __VA_ARGS__)
 #endif
-
-#define BENCHMARK_ITERS 5
 
 static bool benchmark  = false;
 static bool verify  = false;
@@ -142,12 +134,24 @@ static int argument_parser(int argc, char **argv)
 	return AILIA_STATUS_SUCCESS;
 }
 
+void verify_output(std::vector<std::string> prons, std::vector<std::string> expect){
+	if (expect.size() > 0){
+		if (expect.size() != prons.size()){
+			PRINT_OUT("Invalid out token length %d vs %d\n", expect.size(), prons.size());
+			throw("verify error");
+		}
+		for (int i = 0; i < prons.size(); i++){
+			if (expect[i] != prons[i]){
+				PRINT_OUT("Output token mismatch %s vs %s at %d\n", expect[i].c_str(), prons[i].c_str(), i);
+				throw("verify error");
+			}
+		}
+	}
+	PRINT_OUT("verify success\n");
+}
+
 int main(int argc, char **argv)
 {
-	//test_expand();
-	//test_averaged_perceptron();
-	//return 0;
-
 	int status = argument_parser(argc, argv);
 	if (status != AILIA_STATUS_SUCCESS) {
 		return -1;
@@ -186,38 +190,42 @@ int main(int argc, char **argv)
 	}
 
 	G2PEnModel model = G2PEnModel();
-	status = model.open(args_env_id);
-	if (status != 0){
-		return status;
+	model.open(args_env_id, "g2p_encoder.onnx", NULL, "g2p_decoder.onnx", NULL, "homographs.en", NULL, "cmudict", NULL);
+	
+	model.import_from_text("averaged_perceptron_tagger_weights.txt", NULL, "averaged_perceptron_tagger_tagdict.txt", NULL, "averaged_perceptron_tagger_classes.txt", NULL);
+
+	if (verify){
+		verify_output(model.compute("I have $250 in my pocket."), {"AY1", " ", "HH", "AE1", "V", " ", "T", "UW1", " ", "HH", "AH1", "N", "D", "R", "AH0", "D", " ", "F", "IH1", "F", "T", "IY0", " ", "D", "AA1", "L", "ER0", "Z", " ", "IH0", "N", " ", "M", "AY1", " ", "P", "AA1", "K", "AH0", "T", " ", "."});
+		verify_output(model.compute("popular pets, e.g. cats and dogs"), {"P", "AA1", "P", "Y", "AH0", "L", "ER0", " ", "P", "EH1", "T", "S", " ", ",", " ", "F", "AO1", "R", " ", "IH0", "G", "Z", "AE1", "M", "P", "AH0", "L", " ", "K", "AE1", "T", "S", " ", "AH0", "N", "D", " ", "D", "AA1", "G", "Z"});
+		verify_output(model.compute("I refuse to collect the refuse around here."), {"AY1", " ", "R", "IH0", "F", "Y", "UW1", "Z", " ", "T", "UW1", " ", "K", "AH0", "L", "EH1", "K", "T", " ", "DH", "AH0", " ", "R", "EH1", "F", "Y", "UW2", "Z", " ", "ER0", "AW1", "N", "D", " ", "HH", "IY1", "R", " ", "."});
+		verify_output(model.compute("I'm an activationist."), {"AY1", "M", " ", "AE1", "N", " ", "AE2", "K", "T", "IH0", "V", "EY1", "SH", "AH0", "N", "IH0", "S", "T", " ", "."});
+	}else{
+		PRINT_OUT("Input : \n");
+		PRINT_OUT("%s\n", reference_text.c_str());
+
+		auto start2 = std::chrono::high_resolution_clock::now();
+		std::vector<std::string> prons = model.compute(reference_text);
+		auto end2 = std::chrono::high_resolution_clock::now();
+		if (benchmark){
+			PRINT_OUT("total processing time %lld ms\n",  std::chrono::duration_cast<std::chrono::milliseconds>(end2 - start2).count());
+		}
+
+		PRINT_OUT("Output :\n");
+		for (int i = 0; i < prons.size(); i++){
+			PRINT_OUT("%s ", prons[i].c_str());
+		}
+		PRINT_OUT("\n");
 	}
 
-	auto start2 = std::chrono::high_resolution_clock::now();
-	if (verify){
-		status = model.compute("I have $250 in my pocket.", {"AY1", " ", "HH", "AE1", "V", " ", "T", "UW1", " ", "HH", "AH1", "N", "D", "R", "AH0", "D", " ", "F", "IH1", "F", "T", "IY0", " ", "D", "AA1", "L", "ER0", "Z", " ", "IH0", "N", " ", "M", "AY1", " ", "P", "AA1", "K", "AH0", "T", " ", "."});
-		if (status != 0){
-			return status;
-		}
-		status = model.compute("popular pets, e.g. cats and dogs", {"P", "AA1", "P", "Y", "AH0", "L", "ER0", " ", "P", "EH1", "T", "S", " ", ",", " ", "F", "AO1", "R", " ", "IH0", "G", "Z", "AE1", "M", "P", "AH0", "L", " ", "K", "AE1", "T", "S", " ", "AH0", "N", "D", " ", "D", "AA1", "G", "Z"});
-		if (status != 0){
-			return status;
-		}
-		status = model.compute("I refuse to collect the refuse around here.", {"AY1", " ", "R", "IH0", "F", "Y", "UW1", "Z", " ", "T", "UW1", " ", "K", "AH0", "L", "EH1", "K", "T", " ", "DH", "AH0", " ", "R", "EH1", "F", "Y", "UW2", "Z", " ", "ER0", "AW1", "N", "D", " ", "HH", "IY1", "R", " ", "."});
-		if (status != 0){
-			return status;
-		}
-		status = model.compute("I'm an activationist.", {"AY1", "M", " ", "AE1", "N", " ", "AE2", "K", "T", "IH0", "V", "EY1", "SH", "AH0", "N", "IH0", "S", "T", " ", "."});
-		if (status != 0){
-			return status;
-		}
-	}else{
-		status = model.compute(reference_text, std::vector<std::string>());
-	}
-	auto end2 = std::chrono::high_resolution_clock::now();
-	if (benchmark){
-		PRINT_OUT("total processing time %lld ms\n",  std::chrono::duration_cast<std::chrono::milliseconds>(end2 - start2).count());
-	}
+	PRINT_OUT("Program finished successfully.\n");
 
 	model.close();
+
+	// unit test
+	if (verify){
+		test_expand();
+		test_averaged_perceptron();
+	}
 
 	return status;
 }

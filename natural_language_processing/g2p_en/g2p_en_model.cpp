@@ -50,11 +50,15 @@ bool debug_token = false;
 #endif
 
 
-const char *MODEL_NAME[2] = {"g2p_encoder.onnx", "g2p_decoder.onnx"};
-
 // ======================
 // ailia functions
 // ======================
+
+void checkError(int status, const char *func){
+	if (status != 0){
+		throw(func);
+	}
+}
 
 void setErrorDetail(const char *func, const char *detail){
 	PRINT_ERR("Error %s Detail %s\n", func, detail);
@@ -154,9 +158,9 @@ void forward(AILIANetwork *ailia, std::vector<AILIATensor*> &inputs, std::vector
 
 std::string toLowerCase(const std::string &text);
 
-std::unordered_map<std::string, std::tuple<std::vector<std::string>, std::vector<std::string>, std::string>> construct_homograph_dictionary(const std::string& dirname) {
+std::unordered_map<std::string, std::tuple<std::vector<std::string>, std::vector<std::string>, std::string>> construct_homograph_dictionary(const char * path_a, const wchar_t * path_w) {
 	std::unordered_map<std::string, std::tuple<std::vector<std::string>, std::vector<std::string>, std::string>> homograph2features;
-	std::ifstream file(dirname + "/homographs.en");
+	std::ifstream file(path_a);
 
 	std::string line;
 	while (std::getline(file, line)) {
@@ -191,9 +195,9 @@ std::unordered_map<std::string, std::tuple<std::vector<std::string>, std::vector
 	return homograph2features;
 }
 
-std::unordered_map<std::string, std::vector<std::string>> construct_cmu_dictionary(const std::string& dirname) {
+std::unordered_map<std::string, std::vector<std::string>> construct_cmu_dictionary(const char * path_a, const wchar_t * path_w) {
 	std::unordered_map<std::string, std::vector<std::string>> cmudict;
-	std::ifstream file(dirname + "/cmudict");
+	std::ifstream file(path_a);
 
 	std::string line;
 	while (std::getline(file, line)) {
@@ -407,47 +411,33 @@ std::vector<std::string> G2PEnModel::predict(const std::string &word){
 // main functions
 // ======================
 
-int G2PEnModel::open(int env_id)
+void G2PEnModel::open(int env_id, const char *model_encoder_a, const wchar_t *model_encoder_w, const char *model_decoder_a, const wchar_t *model_decoder_w, const char *homograph_a, const wchar_t *homograph_w, const char *cmudict_a, const wchar_t *cmudict_w)
 {
-	// net initialize
 	int status;
 
 	for (int i = 0; i < MODEL_N; i++){
 		status = ailiaCreate(&net[i], env_id, AILIA_MULTITHREAD_AUTO);
-		if (status != AILIA_STATUS_SUCCESS) {
-			PRINT_ERR("ailiaCreate failed %d\n", status);
-			if (status == AILIA_STATUS_LICENSE_NOT_FOUND || status==AILIA_STATUS_LICENSE_EXPIRED){
-				PRINT_OUT("License file not found or expired : please place license file (AILIA.lic)\n");
-			}
-			return -1;
-		}
+		checkError(status, "ailiaCreate");
 
 		status = ailiaSetMemoryMode(net[i], AILIA_MEMORY_OPTIMAIZE_DEFAULT | AILIA_MEMORY_REUSE_INTERSTAGE);
-		if (status != AILIA_STATUS_SUCCESS) {
-			PRINT_ERR("ailiaSetMemoryMode failed %d\n", status);
-			ailiaDestroy(net[i]);
-			return -1;
-		}
+		checkError(status, "ailiaSetMemoryMode");
 
 		AILIAEnvironment *env_ptr = nullptr;
 		status = ailiaGetSelectedEnvironment(net[i], &env_ptr, AILIA_ENVIRONMENT_VERSION);
-		if (status != AILIA_STATUS_SUCCESS) {
-			PRINT_ERR("ailiaGetSelectedEnvironment failed %d\n", status);
-			ailiaDestroy(net[i]);
-			return -1;
-		}
+		checkError(status, "ailiaGetSelectedEnvironment");
 
 		PRINT_OUT("selected env name : %s\n", env_ptr->name);
 
-		status = ailiaOpenWeightFile(net[i], MODEL_NAME[i]);
-		if (status != AILIA_STATUS_SUCCESS) {
-			PRINT_ERR("ailiaOpenWeightFile failed %d\n", status);
-			ailiaDestroy(net[i]);
-			return -1;
+		if (i == 0){
+			status = ailiaOpenWeightFile(net[i], model_encoder_a);
+		}else{
+			status = ailiaOpenWeightFile(net[i], model_decoder_a);
 		}
+		checkError(status, "ailiaOpenWeightFile");
 	}
 
-	return 0;
+	homograph2features = construct_homograph_dictionary(homograph_a, homograph_w);
+	cmudict = construct_cmu_dictionary(cmudict_a, cmudict_w);
 }
 
 void G2PEnModel::close()
@@ -457,13 +447,12 @@ void G2PEnModel::close()
 	}
 }
 
-int G2PEnModel::compute(std::string text, std::vector<std::string> expect)
+void G2PEnModel::import_from_text(const char *weight_a, const wchar_t *weight_w, const char *tagdict_a, const wchar_t *tagdict_w, const char *classes_a, const wchar_t *classes_w){
+	model.import_from_text(weight_a, weight_w, tagdict_a, tagdict_w, classes_a, classes_w);
+}
+
+std::vector<std::string> G2PEnModel::compute(std::string text)
 {
-	int status = AILIA_STATUS_SUCCESS;
-
-	printf("Input : \n");
-	printf("%s\n", text.c_str());
-
 	text = normalize_numbers(text);
 
 	text = toLowerCase(text);
@@ -477,12 +466,6 @@ int G2PEnModel::compute(std::string text, std::vector<std::string> expect)
 	text2 = regexReplace(text2, std::regex("\\?"), " ? ");
 
 	std::vector<std::string> words = split(text2);
-
-	std::unordered_map<std::string, std::tuple<std::vector<std::string>, std::vector<std::string>, std::string>> homograph2features = construct_homograph_dictionary("./");
-	std::unordered_map<std::string, std::vector<std::string>> cmudict = construct_cmu_dictionary("./");
-
-	AveragedPerceptron model;
-	model.import_from_text();
 
     std::vector<std::pair<std::string, std::string>> tokens = model.tag(words);
 
@@ -518,29 +501,7 @@ int G2PEnModel::compute(std::string text, std::vector<std::string> expect)
 		prons.push_back(" ");
 	}
 	prons.pop_back();
-
-	PRINT_OUT("Output :\n");
-	for (int i = 0; i < prons.size(); i++){
-		PRINT_OUT("%s ", prons[i].c_str());
-	}
-	PRINT_OUT("\n");
-
-	if (expect.size() > 0){
-		if (expect.size() != prons.size()){
-			PRINT_OUT("Invalid out token length %d vs %d\n", expect.size(), prons.size());
-			return -1;
-		}
-		for (int i = 0; i < prons.size(); i++){
-			if (expect[i] != prons[i]){
-				PRINT_OUT("Output token mismatch %s vs %s at %d\n", expect[i].c_str(), prons[i].c_str(), i);
-				return -1;
-			}
-		}
-	}
-
-	PRINT_OUT("Program finished successfully.\n");
-
-	return AILIA_STATUS_SUCCESS;
+	return prons;
 }
 
 }

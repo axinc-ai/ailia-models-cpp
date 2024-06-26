@@ -8,6 +8,7 @@
 *
 *******************************************************************/
 
+#pragma once
 
 #include <iostream>
 #include <fstream>
@@ -32,7 +33,7 @@ public:
 	unordered_set<string> classes;
 	unordered_map<string, string> tagdict;
 
-	void import_from_text();
+	void import_from_text(const char *weight_a, const wchar_t *weight_w, const char *tagdict_a, const wchar_t *tagdict_w, const char *classes_a, const wchar_t *classes_w);
 
 	const vector<string> START = { "-START-", "-START2-" };
 	const vector<string> END = { "-END-", "-END2-" };
@@ -45,5 +46,5 @@ public:
 };
 
 
-int test_averaged_perceptron(void);
+void test_averaged_perceptron(void);
 }

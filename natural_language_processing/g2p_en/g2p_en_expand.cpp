@@ -170,10 +170,13 @@ string normalize_numbers(const string &text) {
 	return result;
 }
 
-int test_expand() {
+void test_expand() {
 	string text = "I have £1,000 and $1,234.56 and this is my 1st test.";
-	cout << normalize_numbers(text) << endl;
-	return 0;
+	string output = normalize_numbers(text);
+	string expect = "I have one thousand pounds and one thousand two hundred thirty four dollars point fifty six and this is my first test.";
+	if (output != expect){
+		throw("verify error at test_expand");
+	}
 }
 
 }
