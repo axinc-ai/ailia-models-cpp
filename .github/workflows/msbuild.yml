@@ -17,9 +17,6 @@ env:
   BUILD_CONFIGURATION: Release
   
   OSTYPE: Windows
-  BOOSTROOT: C:\boost
-  BOOST_URL: https://jaist.dl.sourceforge.net/project/boost/boost/1.78.0/boost_1_78_0.zip
-  BOOST_VERSION: 1_78_0
 
 jobs:
   build:
@@ -33,9 +30,8 @@ jobs:
     - name: Checkout github repo (+ download lfs dependencies)
       uses: actions/checkout@v2
 
-    steps:
-    - uses: actions/checkout@v2
-    - uses: Dovyski/setup-opencv-action@v1.1
+    - name: Install cmake
+      uses: Dovyski/setup-opencv-action@v1.1
       with:
         opencv-version: '4.0.0'
     
