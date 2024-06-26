@@ -1,7 +1,7 @@
 ﻿cmake_minimum_required(VERSION 3.1)
 
 set (PROJECT_NAME g2p_en)
-set (SRC_FILES ${PROJECT_NAME}.cpp g2p_en_averaged_perceptron.cpp g2p_en_expand.cpp g2p_en_model.cpp)
+set (SRC_FILES ${PROJECT_NAME}.cpp g2p_en_averaged_perceptron.cpp g2p_en_expand.cpp g2p_en_model.cpp g2p_en_file.cpp)
 set (CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
 message(${INCLUDE_PATH})

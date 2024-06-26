@@ -31,6 +31,7 @@
 #include "g2p_en_averaged_perceptron.h"
 #include "g2p_en_expand.h"
 #include "g2p_en_model.h"
+#include "g2p_en_file.h"
 
 namespace ailiaG2P {
 
@@ -160,7 +161,14 @@ std::string toLowerCase(const std::string &text);
 
 std::unordered_map<std::string, std::tuple<std::vector<std::string>, std::vector<std::string>, std::string>> construct_homograph_dictionary(const char * path_a, const wchar_t * path_w) {
 	std::unordered_map<std::string, std::tuple<std::vector<std::string>, std::vector<std::string>, std::string>> homograph2features;
-	std::ifstream file(path_a);
+
+	std::vector<char> buffer;
+	if (path_w == NULL){
+		buffer = load_file_a(path_a);
+	}else{
+		buffer = load_file_w(path_w);
+	}
+	std::istringstream file(std::string(buffer.begin(), buffer.end()));
 
 	std::string line;
 	while (std::getline(file, line)) {
@@ -197,7 +205,14 @@ std::unordered_map<std::string, std::tuple<std::vector<std::string>, std::vector
 
 std::unordered_map<std::string, std::vector<std::string>> construct_cmu_dictionary(const char * path_a, const wchar_t * path_w) {
 	std::unordered_map<std::string, std::vector<std::string>> cmudict;
-	std::ifstream file(path_a);
+
+	std::vector<char> buffer;
+	if (path_w == NULL){
+		buffer = load_file_a(path_a);
+	}else{
+		buffer = load_file_w(path_w);
+	}
+	std::istringstream file(std::string(buffer.begin(), buffer.end()));
 
 	std::string line;
 	while (std::getline(file, line)) {
@@ -214,7 +229,6 @@ std::unordered_map<std::string, std::vector<std::string>> construct_cmu_dictiona
 		std::vector<std::string> pron(lists.begin() + 2, lists.end());
 		if (cmudict.find(headword) == cmudict.end()) {
 			cmudict[headword] = pron;
-		//	printf("%s %s\n", headword.c_str(), pron[0].c_str());
 		}
 	}
 	return cmudict;
@@ -314,11 +328,11 @@ std::vector<std::string> preds_to_phonemes(const std::vector<int>& preds, const 
 std::vector<std::string> G2PEnModel::predict(const std::string &word){
 	std::vector<int> x = tokenize(word);
 	if (debug){
-		printf("tokens : ");
+		PRINT_OUT("tokens : ");
 		for (int i = 0; i < x.size(); i++){
-			printf("%d ", x[i]);
+			PRINT_OUT("%d ", x[i]);
 		}
-		printf("\n");
+		PRINT_OUT("\n");
 	}
 
 	std::vector<float> h_data(256);
@@ -394,11 +408,11 @@ std::vector<std::string> G2PEnModel::predict(const std::string &word){
 	}
 
 	if (debug){
-		printf("output\n");
+		PRINT_OUT("output\n");
 		for (int i = 0; i < preds.size(); i++){
-			printf("%d ", preds[i]);
+			PRINT_OUT("%d ", preds[i]);
 		}
-		printf("\n");
+		PRINT_OUT("\n");
 	}
 
 	std::vector<std::string> phonemes = get_phonemes();
@@ -429,9 +443,17 @@ void G2PEnModel::open(int env_id, const char *model_encoder_a, const wchar_t *mo
 		PRINT_OUT("selected env name : %s\n", env_ptr->name);
 
 		if (i == 0){
-			status = ailiaOpenWeightFile(net[i], model_encoder_a);
+			if (model_encoder_w == NULL){
+				status = ailiaOpenWeightFileA(net[i], model_encoder_a);
+			}else{
+				status = ailiaOpenWeightFileW(net[i], model_encoder_w);
+			}
 		}else{
-			status = ailiaOpenWeightFile(net[i], model_decoder_a);
+			if (model_decoder_w == NULL){
+				status = ailiaOpenWeightFileA(net[i], model_decoder_a);
+			}else{
+				status = ailiaOpenWeightFileW(net[i], model_decoder_w);
+			}
 		}
 		checkError(status, "ailiaOpenWeightFile");
 	}
@@ -475,10 +497,6 @@ std::vector<std::string> G2PEnModel::compute(std::string text)
 		std::string pos = token.second;
 		std::vector<std::string> pron;
 
-		if (false){
-			printf("word:%s pos:%s\n", word.c_str(), pos.c_str());
-		}
-		
 		if (!std::regex_search(word, std::regex("[a-z]"))) {
 			pron.push_back(word);
 		} else if (homograph2features.find(word) != homograph2features.end()) {
@@ -490,7 +508,6 @@ std::vector<std::string> G2PEnModel::compute(std::string text)
 			}
 		} else if (cmudict.find(word) != cmudict.end()) {
 			pron = cmudict[word];
-			//printf("%s %s\n", word.c_str(), pron[0].c_str());
 		} else {
 			pron = predict(word);
 		}

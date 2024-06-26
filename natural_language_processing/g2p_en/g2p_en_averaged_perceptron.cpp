@@ -18,6 +18,7 @@
 #include <string>
 #include <algorithm>
 #include "g2p_en_averaged_perceptron.h"
+#include "g2p_en_file.h"
 
 using namespace std;
 
@@ -39,7 +40,14 @@ string AveragedPerceptron::predict(const unordered_map<string, int>& features) {
 }
 
 void AveragedPerceptron::import_from_text(const char *weight_a, const wchar_t *weight_w, const char *tagdict_a, const wchar_t *tagdict_w, const char *classes_a, const wchar_t *classes_w) {
-	ifstream weights_file(weight_a);
+	std::vector<char> buffer_weight;
+	if (weight_w == NULL){
+		buffer_weight = load_file_a(weight_a);
+	}else{
+		buffer_weight = load_file_w(weight_w);
+	}
+	std::istringstream weights_file(std::string(buffer_weight.begin(), buffer_weight.end()));
+
 	string line, feat, label;
 	double weight;
 	while (getline(weights_file, feat)) {
@@ -49,21 +57,32 @@ void AveragedPerceptron::import_from_text(const char *weight_a, const wchar_t *w
 		iss >> weight;
 		weights[feat][label] = weight;
 	}
-	weights_file.close();
 
-	ifstream tagdict_file(tagdict_a);
+	std::vector<char> buffer_tagdict;
+	if (tagdict_w == NULL){
+		buffer_tagdict = load_file_a(tagdict_a);
+	}else{
+		buffer_tagdict = load_file_w(tagdict_w);
+	}
+	std::istringstream tagdict_file(std::string(buffer_tagdict.begin(), buffer_tagdict.end()));
+
 	string tag, v;
 	while (getline(tagdict_file, tag)) {
 		getline(tagdict_file, v);
 		tagdict[tag] = v;
 	}
-	tagdict_file.close();
 
-	ifstream classes_file(classes_a);
+	std::vector<char> buffer_classes;
+	if (classes_w == NULL){
+		buffer_classes = load_file_a(classes_a);
+	}else{
+		buffer_classes = load_file_w(classes_w);
+	}
+	std::istringstream classes_file(std::string(buffer_classes.begin(), buffer_classes.end()));
+
 	while (getline(classes_file, line)) {
 		classes.insert(line);
 	}
-	classes_file.close();
 }
 
 unordered_map<string, int> AveragedPerceptron::_get_features(int i, const string& word, const vector<string>& context, const string& prev, const string& prev2) {
