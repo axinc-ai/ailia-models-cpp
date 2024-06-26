@@ -1,0 +1,54 @@
+name: MSBuild
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+env:
+  # Configuration type to build.
+  # You can convert this to a build matrix if you need coverage of multiple configuration types.
+  # https://docs.github.com/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
+  BUILD_CONFIGURATION: Release
+  
+  OSTYPE: Windows
+  BOOSTROOT: C:\boost
+  BOOST_URL: https://jaist.dl.sourceforge.net/project/boost/boost/1.78.0/boost_1_78_0.zip
+  BOOST_VERSION: 1_78_0
+
+jobs:
+  build:
+    runs-on: windows-2019
+    timeout-minutes: 20
+
+    steps:
+    - name: Processor Property
+      run: Get-CimInstance -ClassName Win32_Processor | Select-Object -ExcludeProperty "CIM*"
+
+    - name: Checkout github repo (+ download lfs dependencies)
+      uses: actions/checkout@v2
+
+    steps:
+    - uses: actions/checkout@v2
+    - uses: Dovyski/setup-opencv-action@v1.1
+      with:
+        opencv-version: '4.0.0'
+    
+    - name: Checkout submodule
+      run: |
+        git submodule init
+        git submodule update
+
+    - name: Add MSBuild to PATH
+      uses: microsoft/setup-msbuild@v1
+
+    - name: Build
+      working-directory: ${{env.GITHUB_WORKSPACE}}
+      run: |
+        cmake .
+        cmake --build .
