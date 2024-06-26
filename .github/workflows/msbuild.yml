@@ -35,16 +35,17 @@ jobs:
         git submodule init
         git submodule update
 
-    - name: Install Python with OpenCV
-      run: |
-        python -m pip install --upgrade pip
-        pip install numpy
-        pip install opencv-python
+    - name: Download OpenCV
+      run: curl -L -o opencv.exe https://github.com/opencv/opencv/releases/download/4.5.5/opencv-4.5.5-vc14_vc15.exe
 
-    - name: Find OpenCV installation path
-      id: find_opencv_path
+    - name: Extract OpenCV
       run: |
-        echo "##[set-output name=opencv_path;]$(python -c "import cv2; import os; print(os.path.dirname(cv2.__file__))")"
+        mkdir opencv
+        ./opencv.exe /SILENT /DIR=./opencv
+      
+    - name: Set OpenCV environment variable
+      run: |
+        echo "OpenCV_DIR=$PWD/opencv/build" >> $GITHUB_ENV
 
     - name: Add MSBuild to PATH
       uses: microsoft/setup-msbuild@v1
@@ -52,5 +53,5 @@ jobs:
     - name: Build
       working-directory: ${{env.GITHUB_WORKSPACE}}
       run: |
-        cmake -DOpenCV_DIR=${{ steps.find_opencv_path.outputs.opencv_path }} .
+        cmake -DOpenCV_DIR=${{ env.OpenCV_DIR }} .
         cmake --build .
