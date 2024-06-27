@@ -50,6 +50,8 @@ jobs:
         dir opencv
         echo "Contents of opencv/build directory:"
         dir opencv/build
+        echo "Contents of opencv/build/x64/vc15/bin directory:"
+        dir opencv/build/x64/vc15/bin
 
     - name: Add MSBuild to PATH
       uses: microsoft/setup-msbuild@v1
