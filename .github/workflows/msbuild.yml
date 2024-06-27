@@ -1,0 +1,54 @@
+name: MSBuild
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+env:
+  # Configuration type to build.
+  # You can convert this to a build matrix if you need coverage of multiple configuration types.
+  # https://docs.github.com/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
+  BUILD_CONFIGURATION: Release
+  
+  OSTYPE: Windows
+
+jobs:
+  build:
+    runs-on: windows-2019
+    timeout-minutes: 20
+
+    steps:
+    - name: Processor Property
+      run: Get-CimInstance -ClassName Win32_Processor | Select-Object -ExcludeProperty "CIM*"
+
+    - name: Checkout github repo (+ download lfs dependencies)
+      uses: actions/checkout@v2
+
+    - name: Checkout submodule
+      run: |
+        git submodule init
+        git submodule update
+
+    - name: Download OpenCV
+      run: curl -L -o opencv.exe https://github.com/opencv/opencv/releases/download/4.5.5/opencv-4.5.5-vc14_vc15.exe
+
+    - name: Extract OpenCV
+      run: |
+        mkdir opencv
+        ./opencv.exe -y -o./opencv
+        echo "OPENCV_PATH=$PWD/opencv/opencv/build" >> $GITHUB_ENV
+      
+    - name: Add MSBuild to PATH
+      uses: microsoft/setup-msbuild@v1
+
+    - name: Build
+      working-directory: ${{env.GITHUB_WORKSPACE}}
+      run: |
+        cmake -DOpenCV_DIR="${{ env.OPENCV_PATH }}" .
+        cmake --build .
