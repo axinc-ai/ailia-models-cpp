@@ -18,6 +18,7 @@
 #include <opencv2/opencv.hpp>
 
 #if defined(_WIN32) || defined(_WIN64)
+#define NOMINMAX
 #include <windows.h>
 #define sleep(n) Sleep(n*1000)
 #else

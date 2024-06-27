@@ -35,7 +35,7 @@ std::vector<char> load_file_a(const char *path_a){
 
 std::vector<char> load_file_w(const wchar_t *path_w){
 #ifdef WIN32
-    FILE* fp = _wfopen(path_w, "rb");
+    FILE* fp = _wfopen(path_w, L"rb");
     if (fp == NULL) {
         throw std::runtime_error("File could not open");
     }
