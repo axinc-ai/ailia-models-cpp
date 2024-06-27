@@ -41,7 +41,7 @@ jobs:
     - name: Extract OpenCV
       run: |
         mkdir opencv
-        ./opencv.exe -y -o./opencv
+        Start-Process -FilePath "opencv.exe" -ArgumentList "-y -o ./opencv" -NoNewWindow -Wait
         echo "OPENCV_PATH=$PWD/opencv/build" >> $env:GITHUB_ENV
       
     - name: Verify OpenCV Extraction
