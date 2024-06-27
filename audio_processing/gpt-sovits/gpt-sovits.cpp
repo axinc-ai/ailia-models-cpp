@@ -41,9 +41,6 @@ bool debug_token = false;
 
 #define BENCHMARK_ITERS 5
 
-#define NUM_INPUTS 4
-#define NUM_OUTPUTS 3
-
 #define MODEL_N 5
 
 #define MODEL_SSL 0
