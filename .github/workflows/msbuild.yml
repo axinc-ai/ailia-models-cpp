@@ -42,7 +42,7 @@ jobs:
       run: |
         mkdir opencv
         ./opencv.exe -y -o./opencv
-        echo "OPENCV_PATH=$PWD/opencv/build" >> $GITHUB_ENV
+        echo "OPENCV_PATH=$PWD/opencv/build" >> $env:GITHUB_ENV
       
     - name: Verify OpenCV Extraction
       run: |
@@ -55,7 +55,7 @@ jobs:
       uses: microsoft/setup-msbuild@v1
 
     - name: Verify OPENCV_PATH
-      run: echo "OPENCV_PATH is set to: ${{ env.OPENCV_PATH }}"
+      run: echo ${{ env.OPENCV_PATH }}
 
     - name: Build
       working-directory: ${{env.GITHUB_WORKSPACE}}
