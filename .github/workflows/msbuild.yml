@@ -42,16 +42,14 @@ jobs:
       run: |
         mkdir opencv
         ./opencv.exe -y -o./opencv
-        echo "OPENCV_PATH=$PWD/opencv/opencv/build" >> $GITHUB_ENV
+        echo "OPENCV_PATH=$PWD/opencv/build" >> $GITHUB_ENV
       
     - name: Verify OpenCV Extraction
       run: |
         echo "Contents of opencv directory:"
         dir opencv
-        echo "Contents of opencv/opencv directory:"
-        dir opencv/opencv
-        echo "Contents of opencv/opencv/build directory:"
-        dir opencv/opencv/build
+        echo "Contents of opencv/build directory:"
+        dir opencv/build
 
     - name: Add MSBuild to PATH
       uses: microsoft/setup-msbuild@v1
