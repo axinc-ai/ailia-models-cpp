@@ -500,7 +500,10 @@ std::vector<std::string> G2PEnModel::compute(std::string text)
 		if (!std::regex_search(word, std::regex("[a-z]"))) {
 			pron.push_back(word);
 		} else if (homograph2features.find(word) != homograph2features.end()) {
-			auto [pron1, pron2, pos1] = homograph2features[word];
+			std::tuple<std::vector<std::string>, std::vector<std::string>, std::string> data = homograph2features[word];
+			std::vector<std::string> pron1 = std::get<0>(data);
+			std::vector<std::string> pron2 = std::get<1>(data);
+			std::string pos1 = std::get<2>(data);
 			if (pos.find(pos1) == 0) {
 				pron = pron1;
 			} else {
@@ -517,7 +520,9 @@ std::vector<std::string> G2PEnModel::compute(std::string text)
 		}
 		prons.push_back(" ");
 	}
-	prons.pop_back();
+	if (prons.size() > 0){
+		prons.pop_back();
+	}
 	return prons;
 }
 
