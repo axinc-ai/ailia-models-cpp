@@ -1,0 +1,44 @@
+name: XcodeBuild
+
+on:
+  push:
+    branches:
+      - master
+#  pull_request:
+#    types:
+#      - opened
+#      - synchronize
+#      - reopened
+
+env:
+  OSTYPE: Mac
+  BOOST_VERSION: 1.78.0
+jobs:
+  build:
+    runs-on: macos-11
+    timeout-minutes: 5
+
+    steps:
+    - name: Checkout github repo (+ download lfs dependencies)
+      uses: actions/checkout@v2
+
+    - name: Checkout submodule
+      run: |
+        git submodule init
+        git submodule update
+
+    - name: Select Xcode version
+      run: sudo xcode-select -s '/Applications/Xcode_12.4.app/Contents/Developer'
+
+    - name: Show Xcode version
+      run: xcodebuild -version
+
+    - name: Install opencv
+      run: |
+        brew install opencv
+
+    - name: Build
+      working-directory: ${{env.GITHUB_WORKSPACE}}
+      run: |
+        cmake .
+        cmake --build .

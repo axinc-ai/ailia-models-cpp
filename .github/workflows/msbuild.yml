@@ -1,0 +1,66 @@
+name: MSBuild
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+env:
+  # Configuration type to build.
+  # You can convert this to a build matrix if you need coverage of multiple configuration types.
+  # https://docs.github.com/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
+  BUILD_CONFIGURATION: Release
+  
+  OSTYPE: Windows
+
+jobs:
+  build:
+    runs-on: windows-2019
+    timeout-minutes: 20
+
+    steps:
+    - name: Processor Property
+      run: Get-CimInstance -ClassName Win32_Processor | Select-Object -ExcludeProperty "CIM*"
+
+    - name: Checkout github repo (+ download lfs dependencies)
+      uses: actions/checkout@v2
+
+    - name: Checkout submodule
+      run: |
+        git submodule init
+        git submodule update
+
+    - name: Download OpenCV
+      run: curl -L -o opencv.exe https://github.com/opencv/opencv/releases/download/4.5.5/opencv-4.5.5-vc14_vc15.exe
+
+    - name: Extract OpenCV
+      run: |
+        mkdir opencv
+        Start-Process -FilePath "opencv.exe" -ArgumentList "-y -o ./opencv" -NoNewWindow -Wait
+        echo "OPENCV_PATH=$PWD/opencv/build" >> $env:GITHUB_ENV
+      
+    - name: Verify OpenCV Extraction
+      run: |
+        echo "Contents of opencv directory:"
+        dir opencv
+        echo "Contents of opencv/build directory:"
+        dir opencv/build
+        echo "Contents of opencv/build/x64/vc15/bin directory:"
+        dir opencv/build/x64/vc15/bin
+
+    - name: Add MSBuild to PATH
+      uses: microsoft/setup-msbuild@v1
+
+    - name: Verify OPENCV_PATH
+      run: echo ${{ env.OPENCV_PATH }}
+
+    - name: Build
+      working-directory: ${{env.GITHUB_WORKSPACE}}
+      run: |
+        cmake -DOpenCV_DIR="${{ env.OPENCV_PATH }}" .
+        cmake --build .
