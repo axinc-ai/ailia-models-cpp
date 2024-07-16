@@ -207,8 +207,8 @@ std::vector<int> encode(std::string text, struct AILIATokenizer *tokenizer){
 	}
 	const int CLS_TOKEN = 2;
 	const int SEP_TOKEN = 3;
-    tokens.erase(std::remove(tokens.begin(), tokens.end(), CLS_TOKEN), tokens.end());
-    tokens.erase(std::remove(tokens.begin(), tokens.end(), SEP_TOKEN), tokens.end());
+	tokens.erase(std::remove(tokens.begin(), tokens.end(), CLS_TOKEN), tokens.end());
+	tokens.erase(std::remove(tokens.begin(), tokens.end(), SEP_TOKEN), tokens.end());
 	return tokens;
 }
 
