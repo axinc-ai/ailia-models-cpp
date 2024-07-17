@@ -13,6 +13,7 @@
 #include <time.h>
 #include <vector>
 #include <string>
+#include <algorithm>
 #include <math.h>
 
 #undef UNICODE
