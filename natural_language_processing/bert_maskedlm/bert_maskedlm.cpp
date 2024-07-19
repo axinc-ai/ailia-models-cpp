@@ -4,7 +4,7 @@
 *      AILIA BERT maskedLM sample
 *    AUTHOR:
 *
-*    DATE:2023/06/14
+*    DATE:2024/07/16
 *
 *******************************************************************/
 
@@ -13,6 +13,7 @@
 #include <time.h>
 #include <vector>
 #include <string>
+#include <algorithm>
 #include <math.h>
 
 #undef UNICODE
@@ -205,6 +206,10 @@ std::vector<int> encode(std::string text, struct AILIATokenizer *tokenizer){
 		setErrorDetail("ailiaTokenizerGetTokens", "");
 		return tokens;
 	}
+	const int CLS_TOKEN = 2;
+	const int SEP_TOKEN = 3;
+	tokens.erase(std::remove(tokens.begin(), tokens.end(), CLS_TOKEN), tokens.end());
+	tokens.erase(std::remove(tokens.begin(), tokens.end(), SEP_TOKEN), tokens.end());
 	return tokens;
 }
 
