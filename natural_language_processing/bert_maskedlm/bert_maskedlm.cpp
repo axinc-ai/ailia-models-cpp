@@ -4,7 +4,7 @@
 *      AILIA BERT maskedLM sample
 *    AUTHOR:
 *
-*    DATE:2024/07/16
+*    DATE:2024/07/27
 *
 *******************************************************************/
 
@@ -189,7 +189,7 @@ void setErrorDetail(const char *func, const char *detail){
 
 std::vector<int> encode(std::string text, struct AILIATokenizer *tokenizer){
 	std::vector<int> tokens(0);
-	int status = ailiaTokenizerEncode(tokenizer, text.c_str());
+	int status = ailiaTokenizerEncodeWithSpecialTokens(tokenizer, text.c_str());
 	if (status != AILIA_STATUS_SUCCESS){
 		setErrorDetail("ailiaTokenizerEncode", "");
 		return tokens;
