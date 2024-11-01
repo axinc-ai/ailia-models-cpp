@@ -377,20 +377,17 @@ vector<int> nms(const vector<vector<float>>& boxes, const vector<float>& scores,
 }
 
 bool compare_indices(const std::pair<int, float>& a, const std::pair<int, float>& b) {
-    return a.second > b.second; // 二番目の要素（スコア）が大きい方を優先
+    return a.second > b.second;
 }
 
 std::vector<int> sort_indices_by_score(const std::vector<float>& filtered_score) {
-    // インデックスとスコアをペアにして保持
     std::vector<std::pair<int, float>> indexed_scores;
     for (size_t i = 0; i < filtered_score.size(); ++i) {
         indexed_scores.emplace_back(i, filtered_score[i]);
     }
 
-    // スコアに基づいてソート
     std::sort(indexed_scores.begin(), indexed_scores.end(), compare_indices);
 
-    // ソートされたインデックスを取得
     std::vector<int> order;
     for (const auto& pair : indexed_scores) {
         order.push_back(pair.first);
