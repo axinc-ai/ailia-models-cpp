@@ -40,6 +40,7 @@ add_subdirectory(image_classification/resnet50)
 add_subdirectory(image_classification/clip)
 
 add_subdirectory(face_detection/yolov3-face)
+add_subdirectory(face_detection/retinaface)
 
 add_subdirectory(face_identification/arcface)
 
