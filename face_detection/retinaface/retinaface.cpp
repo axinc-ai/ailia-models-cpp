@@ -13,6 +13,10 @@
 #include <time.h>
 #include <vector>
 #include <string>
+#include <algorithm>
+#include <cmath>
+#include <numeric>
+
 #include <opencv2/opencv.hpp>
 
 #undef UNICODE
@@ -22,6 +26,8 @@
 #include "utils.h"
 #include "detector_utils.h"
 #include "webcamera_utils.h"
+
+using namespace std;
 
 
 // ======================
@@ -34,13 +40,8 @@
 #define IMAGE_PATH      "selfie.png"
 #define SAVE_IMAGE_PATH "output.png"
 
-#define MODEL_INPUT_WIDTH  416
-#define MODEL_INPUT_HEIGHT 416
-#define IMAGE_WIDTH        416 // for video mode
-#define IMAGE_HEIGHT       416 // for video mode
-
-#define THRESHOLD 0.2f
-#define IOU       0.45f
+#define IMAGE_WIDTH        1280 // for video mode
+#define IMAGE_HEIGHT       768 // for video mode
 
 #if defined(_WIN32) || defined(_WIN64)
 #define PRINT_OUT(...) fprintf_s(stdout, __VA_ARGS__)
@@ -164,19 +165,9 @@ static int argument_parser(int argc, char **argv)
 }
 
 
-
 // ======================
 // Pre and Post Processing
 // ======================
-
-#include <vector>
-#include <algorithm>
-#include <cmath>
-#include <numeric>
-#include <iostream>
-#include <utility>
-
-using namespace std;
 
 const int RETINAFACE_DETECTOR_INPUT_CHANNEL_COUNT = 3;
 const int RETINAFACE_DETECTOR_INPUT_BATCH_SIZE = 1;
@@ -199,7 +190,7 @@ struct FaceInfo {
     vector<pair<float, float>> keypoints;
 };
 
-vector<vector<float>> Reshape(const vector<float>& array, int columns) {
+vector<vector<float>> reshape(const vector<float>& array, int columns) {
     int rows = array.size() / columns;
     vector<vector<float>> reshaped(rows, vector<float>(columns));
     for (size_t i = 0; i < array.size(); ++i) {
@@ -210,7 +201,7 @@ vector<vector<float>> Reshape(const vector<float>& array, int columns) {
     return reshaped;
 }
 
-vector<vector<float>> PriorBoxForward(int image_width, int image_height) {
+vector<vector<float>> prior_box_forward(int image_width, int image_height) {
     vector<vector<int>> minSizes = {{16, 32}, {64, 128}, {256, 512}};
     vector<int> steps = {8, 16, 32};
     vector<int> image_size = {image_height, image_width};
@@ -239,10 +230,10 @@ vector<vector<float>> PriorBoxForward(int image_width, int image_height) {
         }
     }
 
-    return Reshape(anchors, 4);
+    return reshape(anchors, 4);
 }
 
-vector<vector<float>> DecodeBox(const vector<vector<float>>& src_box, const vector<vector<float>>& priors) {
+vector<vector<float>> decode_box(const vector<vector<float>>& src_box, const vector<vector<float>>& priors) {
     int numBoxes = priors.size();
     vector<vector<float>> dst_box(numBoxes, vector<float>(4));
 
@@ -260,7 +251,7 @@ vector<vector<float>> DecodeBox(const vector<vector<float>>& src_box, const vect
     return dst_box;
 }
 
-vector<float> DecodeScore(const vector<vector<float>>& src_score) {
+vector<float> decode_score(const vector<vector<float>>& src_score) {
     int numElements = src_score.size();
     vector<float> dst_score(numElements);
     for (int i = 0; i < numElements; ++i) {
@@ -269,7 +260,7 @@ vector<float> DecodeScore(const vector<vector<float>>& src_score) {
     return dst_score;
 }
 
-vector<vector<float>> DecodeLandmark(const vector<vector<float>>& src_landmark, const vector<vector<float>>& priors) {
+vector<vector<float>> decode_landmark(const vector<vector<float>>& src_landmark, const vector<vector<float>>& priors) {
     int numBoxes = priors.size();
     vector<vector<float>> dst_landmark(numBoxes, vector<float>(10));
     for (int i = 0; i < numBoxes; ++i) {
@@ -281,7 +272,7 @@ vector<vector<float>> DecodeLandmark(const vector<vector<float>>& src_landmark, 
     return dst_landmark;
 }
 
-vector<vector<float>> Scale(const vector<vector<float>>& src, const vector<int>& scale) {
+vector<vector<float>> scale(const vector<vector<float>>& src, const vector<int>& scale) {
     int src_width = src.size();
     int src_height = src[0].size();
     vector<vector<float>> dst(src_width, vector<float>(src_height));
@@ -294,7 +285,7 @@ vector<vector<float>> Scale(const vector<vector<float>>& src, const vector<int>&
     return dst;
 }
 
-vector<float> Filter(const vector<float>& src, const vector<int>& inds) {
+vector<float> filter(const vector<float>& src, const vector<int>& inds) {
     vector<float> dst(inds.size());
     for (size_t i = 0; i < inds.size(); ++i) {
         dst[i] = src[inds[i]];
@@ -302,7 +293,7 @@ vector<float> Filter(const vector<float>& src, const vector<int>& inds) {
     return dst;
 }
 
-vector<vector<float>> Filter(const vector<vector<float>>& src, const vector<int>& inds) {
+vector<vector<float>> filter(const vector<vector<float>>& src, const vector<int>& inds) {
     int src_element_num = src[0].size();
     vector<vector<float>> dst(inds.size(), vector<float>(src_element_num));
 
@@ -315,7 +306,7 @@ vector<vector<float>> Filter(const vector<vector<float>>& src, const vector<int>
     return dst;
 }
 
-vector<float> KeepTopKBeforeNMS(const vector<float>& src, const vector<int>& order, int top_k) {
+vector<float> keep_top_k_before_nms(const vector<float>& src, const vector<int>& order, int top_k) {
     vector<float> dst(top_k);
     for (int i = 0; i < top_k; ++i) {
         dst[i] = src[order[i]];
@@ -323,7 +314,7 @@ vector<float> KeepTopKBeforeNMS(const vector<float>& src, const vector<int>& ord
     return dst;
 }
 
-vector<vector<float>> KeepTopKBeforeNMS(const vector<vector<float>>& src, const vector<int>& order, int top_k) {
+vector<vector<float>> keep_top_k_before_nms(const vector<vector<float>>& src, const vector<int>& order, int top_k) {
     int src_element_num = src[0].size();
     vector<vector<float>> dst(top_k, vector<float>(src_element_num));
 
@@ -335,7 +326,7 @@ vector<vector<float>> KeepTopKBeforeNMS(const vector<vector<float>>& src, const 
     return dst;
 }
 
-vector<int> Nms(const vector<vector<float>>& boxes, const vector<float>& scores, float thresh) {
+vector<int> nms(const vector<vector<float>>& boxes, const vector<float>& scores, float thresh) {
     int numBoxes = boxes.size();
     vector<float> x1(numBoxes), y1(numBoxes), x2(numBoxes), y2(numBoxes);
     
@@ -404,31 +395,25 @@ std::vector<int> sort_indices_by_score(const std::vector<float>& filtered_score)
     return order;
 }
 
-vector<FaceInfo> PostProcess(const vector<float>& box_data, const vector<float>& score_data, const vector<float>& landmark_data, int tex_width, int tex_height) {
-    PRINT_OUT("PostProcess1");
-    fflush(stdout);
-
+vector<FaceInfo> post_process(const vector<float>& box_data, const vector<float>& score_data, const vector<float>& landmark_data, int tex_width, int tex_height) {
     vector<FaceInfo> results;
 
     vector<int> boxShape = {static_cast<int>(box_data.size() / BOX_DIM), BOX_DIM};
-    vector<vector<float>> reshaped_box_data = Reshape(box_data, boxShape[1]);
-    vector<vector<float>> priors = PriorBoxForward(tex_width, tex_height);
-    vector<vector<float>> boxes = DecodeBox(reshaped_box_data, priors);
+    vector<vector<float>> reshaped_box_data = reshape(box_data, boxShape[1]);
+    vector<vector<float>> priors = prior_box_forward(tex_width, tex_height);
+    vector<vector<float>> boxes = decode_box(reshaped_box_data, priors);
     vector<int> box_scale = {tex_width, tex_height, tex_width, tex_height};
-    vector<vector<float>> scaled_boxes = Scale(boxes, box_scale);
+    vector<vector<float>> scaled_boxes = scale(boxes, box_scale);
 
     vector<int> scoreShape = {static_cast<int>(score_data.size() / SCORE_DIM), SCORE_DIM};
-    vector<vector<float>> reshaped_score_data = Reshape(score_data, scoreShape[1]);
-    vector<float> scores = DecodeScore(reshaped_score_data);
+    vector<vector<float>> reshaped_score_data = reshape(score_data, scoreShape[1]);
+    vector<float> scores = decode_score(reshaped_score_data);
 
     vector<int> landmarkShape = {static_cast<int>(landmark_data.size() / LANDMARK_DIM), LANDMARK_DIM};
-    vector<vector<float>> reshaped_landmark_data = Reshape(landmark_data, landmarkShape[1]);
-    vector<vector<float>> landmarks = DecodeLandmark(reshaped_landmark_data, priors);
+    vector<vector<float>> reshaped_landmark_data = reshape(landmark_data, landmarkShape[1]);
+    vector<vector<float>> landmarks = decode_landmark(reshaped_landmark_data, priors);
     vector<int> landmark_scale = {tex_width, tex_height, tex_width, tex_height, tex_width, tex_height, tex_width, tex_height, tex_width, tex_height};
-    vector<vector<float>> scaled_landmarks = Scale(landmarks, landmark_scale);
-
-    PRINT_OUT("PostProcess2");
-    fflush(stdout);
+    vector<vector<float>> scaled_landmarks = scale(landmarks, landmark_scale);
 
     vector<int> inds;
     for (int i = 0; i < scores.size(); i++) {
@@ -437,25 +422,9 @@ vector<FaceInfo> PostProcess(const vector<float>& box_data, const vector<float>&
         }
     }
 
-    PRINT_OUT("PostProcess3");
-    fflush(stdout);
-
-    PRINT_OUT("scaled_boxes %d", scaled_boxes.size());
-    PRINT_OUT("scores %d", scores.size());
-    PRINT_OUT("scaled_landmarks %d", scaled_landmarks.size());
-    fflush(stdout);
-
-    vector<vector<float>> filtered_boxes = Filter(scaled_boxes, inds);
-    vector<float> filtered_scores = Filter(scores, inds);
-    vector<vector<float>> filtered_landmarks = Filter(scaled_landmarks, inds);
-
-    PRINT_OUT("filtered_boxes %d\n", filtered_boxes.size());
-    PRINT_OUT("filtered_scores %d\n", filtered_scores.size());
-    PRINT_OUT("filtered_landmarks %d\n", filtered_landmarks.size());
-    fflush(stdout);
-
-    PRINT_OUT("PostProcess4");
-    fflush(stdout);
+    vector<vector<float>> filtered_boxes = filter(scaled_boxes, inds);
+    vector<float> filtered_scores = filter(scores, inds);
+    vector<vector<float>> filtered_landmarks = filter(scaled_landmarks, inds);
 
     if (filtered_scores.size() == 0){
         return results;
@@ -463,25 +432,11 @@ vector<FaceInfo> PostProcess(const vector<float>& box_data, const vector<float>&
 
     int top_k = min(TOP_K, static_cast<int>(filtered_scores.size()));
     vector<int> order = sort_indices_by_score(filtered_scores);
-    /*
-    vector<int> order = [&filtered_scores]() {
-        vector<int> idx(filtered_scores.size());
-        iota(idx.begin(), idx.end(), 0);
-        sort(idx.begin(), idx.end(), [&filtered_scores](int a, int b) { return filtered_scores[a] > filtered_scores[b]; });
-        return idx;
-    }();
-    */
-    PRINT_OUT("KeepTopKBeforeNMS filtered_boxes %d %d\n", filtered_boxes.size(), filtered_boxes[0].size());
-    fflush(stdout);
-    vector<vector<float>> top_k_boxes = KeepTopKBeforeNMS(filtered_boxes, order, top_k);
-    PRINT_OUT("KeepTopKBeforeNMS filtered_scores %d\n", filtered_scores.size());
-    fflush(stdout);
-    vector<float> top_k_scores = KeepTopKBeforeNMS(filtered_scores, order, top_k);
-    PRINT_OUT("KeepTopKBeforeNMS filtered_landmarks %d %d\n", filtered_landmarks.size(), filtered_landmarks[0].size());
-    fflush(stdout);
-    vector<vector<float>> top_k_landmarks = KeepTopKBeforeNMS(filtered_landmarks, order, top_k);
+    vector<vector<float>> top_k_boxes = keep_top_k_before_nms(filtered_boxes, order, top_k);
+    vector<float> top_k_scores = keep_top_k_before_nms(filtered_scores, order, top_k);
+    vector<vector<float>> top_k_landmarks = keep_top_k_before_nms(filtered_landmarks, order, top_k);
 
-    vector<int> keep = Nms(top_k_boxes, top_k_scores, NMS_THRES);
+    vector<int> keep = nms(top_k_boxes, top_k_scores, NMS_THRES);
 
     int row = keep.size();
     vector<vector<float>> nms_boxes(row, vector<float>(BOX_DIM));
@@ -510,6 +465,20 @@ vector<FaceInfo> PostProcess(const vector<float>& box_data, const vector<float>&
     return results;
 }
 
+void set_input_shape(AILIANetwork *ailia, int tex_width, int tex_height){
+    AILIAShape shape;
+    shape.x = tex_width;
+    shape.y = tex_height;
+    shape.z = 3;
+    shape.w = 1;
+    shape.dim = 4;
+
+    unsigned int input_idx = 0;
+    ailiaGetBlobIndexByInputIndex(ailia, &input_idx, 0);
+
+    ailiaSetInputBlobShape(ailia, &shape, 0, AILIA_SHAPE_VERSION);
+}
+
 vector<FaceInfo> Detection(AILIANetwork *ailia,  const unsigned char* camera, int tex_width, int tex_height, int channels) {
     // Prepare input data
     std::vector<float> data(tex_width * tex_height * 3 * 1);
@@ -523,19 +492,9 @@ vector<FaceInfo> Detection(AILIANetwork *ailia,  const unsigned char* camera, in
         }
     }
 
-    AILIAShape shape;
-    shape.x = tex_width;
-    shape.y = tex_height;
-    shape.z = 3;
-    shape.w = 1;
-    shape.dim = 4;
-
     unsigned int input_idx = 0;
     ailiaGetBlobIndexByInputIndex(ailia, &input_idx, 0);
 
-    PRINT_OUT("input_idx %d", input_idx);
-
-    ailiaSetInputBlobShape(ailia, &shape, input_idx, AILIA_SHAPE_VERSION);
     ailiaSetInputBlobData(ailia, &data[0], data.size() * sizeof(float), input_idx);
 
     ailiaUpdate(ailia);
@@ -559,19 +518,16 @@ vector<FaceInfo> Detection(AILIANetwork *ailia,  const unsigned char* camera, in
     vector<float> score_data(score_shape.x * score_shape.y * score_shape.z * score_shape.w);
     vector<float> landmark_data(landmark_shape.x * landmark_shape.y * landmark_shape.z * landmark_shape.w);
 
-    PRINT_OUT("box %d %d %d %d\n", box_shape.x, box_shape.y, box_shape.z, box_shape.w);
-    PRINT_OUT("score %d %d %d %d\n", score_shape.x, score_shape.y, score_shape.z, score_shape.w);
-    PRINT_OUT("landmark %d %d %d %d\n", landmark_shape.x, landmark_shape.y, landmark_shape.z, landmark_shape.w);
+    //PRINT_OUT("box %d %d %d %d\n", box_shape.x, box_shape.y, box_shape.z, box_shape.w);
+    //PRINT_OUT("score %d %d %d %d\n", score_shape.x, score_shape.y, score_shape.z, score_shape.w);
+    //PRINT_OUT("landmark %d %d %d %d\n", landmark_shape.x, landmark_shape.y, landmark_shape.z, landmark_shape.w);
 
     ailiaGetBlobData(ailia, &box_data[0], box_data.size() * sizeof(float), box_idx);
     ailiaGetBlobData(ailia, &score_data[0], score_data.size() * sizeof(float), score_idx);
     ailiaGetBlobData(ailia, &landmark_data[0], landmark_data.size() * sizeof(float), landmark_idx);
 
-    printf("blob get success");
-    fflush(stdout);
-
     // Post-processing
-    vector<FaceInfo> detections = PostProcess(box_data, score_data, landmark_data, tex_width, tex_height);
+    vector<FaceInfo> detections = post_process(box_data, score_data, landmark_data, tex_width, tex_height);
 
     return detections;
 }
@@ -585,7 +541,7 @@ int plot_result_retinaface(std::vector<FaceInfo> info, cv::Mat& img, bool loggin
 
     for (int i = 0; i < info.size(); i++) {
         FaceInfo obj = info[i];
-        PRINT_OUT("+ idx=%d\n  prob=%.15f\n  x=%.15f\n  y=%.15f\n  w=%.15f\n  h=%.15f\n",
+        PRINT_OUT("+ idx=%d\n  score=%.15f\n  x=%.15f\n  y=%.15f\n  w=%.15f\n  h=%.15f\n",
                     i, obj.score, obj.center.first, obj.center.second, obj.width, obj.height);
 
         cv::Point top_left((int)((obj.center.first - obj.width / 2)), (int)((obj.center.second - obj.height / 2)));
@@ -596,7 +552,6 @@ int plot_result_retinaface(std::vector<FaceInfo> info, cv::Mat& img, bool loggin
         cv::Scalar color = hsv_to_rgb(256*((float)i/(float)info.size()), 255, 255);
         float fontScale = (float)img.cols / 512.0f;
         cv::rectangle(img, top_left, bottom_right, color, 4);
-        //cv::putText(img, category[obj.category], text_position, cv::FONT_HERSHEY_SIMPLEX, fontScale, color, 1);
     }
 
     return 0;
@@ -616,6 +571,8 @@ static int recognize_from_image(AILIANetwork* ailia)
     }
     PRINT_OUT("input image shape: (%d, %d, %d)\n",
               img.cols, img.rows, img.channels());
+    
+    set_input_shape(ailia, img.cols, img.rows);
 
     // inference
     PRINT_OUT("Start inference...\n");
@@ -672,6 +629,8 @@ static int recognize_from_video(AILIANetwork* ailia)
         }
     }
 
+    set_input_shape(ailia, IMAGE_WIDTH, IMAGE_HEIGHT);
+
     while (1) {
         cv::Mat frame;
         capture >> frame;
@@ -713,6 +672,12 @@ int main(int argc, char **argv)
     status = ailiaCreate(&ailia, env_id, AILIA_MULTITHREAD_AUTO);
     if (status != AILIA_STATUS_SUCCESS) {
         PRINT_ERR("ailiaCreate failed %d\n", status);
+        return -1;
+    }
+
+    status = ailiaSetMemoryMode(ailia, AILIA_MEMORY_OPTIMAIZE_DEFAULT | AILIA_MEMORY_REUSE_INTERSTAGE);
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("ailiaSetMemoryMode failed %d\n", status);
         return -1;
     }
 
