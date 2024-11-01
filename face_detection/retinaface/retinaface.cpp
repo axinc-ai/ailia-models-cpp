@@ -466,7 +466,7 @@ vector<FaceInfo> post_process(const vector<float>& box_data, const vector<float>
     return results;
 }
 
-void set_input_shape(AILIANetwork *ailia, int tex_width, int tex_height){
+int set_input_shape(AILIANetwork *ailia, int tex_width, int tex_height){
     AILIAShape shape;
     shape.x = tex_width;
     shape.y = tex_height;
@@ -475,30 +475,55 @@ void set_input_shape(AILIANetwork *ailia, int tex_width, int tex_height){
     shape.dim = 4;
 
     unsigned int input_idx = 0;
-    ailiaGetBlobIndexByInputIndex(ailia, &input_idx, 0);
+    int status = ailiaGetBlobIndexByInputIndex(ailia, &input_idx, 0);
+    if (status != AILIA_STATUS_SUCCESS){
+        PRINT_ERR("ailiaGetBlobIndexByInputIndex failed %d\n", status);
+        return status;
+    }
 
-    ailiaSetInputBlobShape(ailia, &shape, 0, AILIA_SHAPE_VERSION);
+    status = ailiaSetInputBlobShape(ailia, &shape, input_idx, AILIA_SHAPE_VERSION);
+    if (status != AILIA_STATUS_SUCCESS){
+        PRINT_ERR("ailiaSetInputBlobShape failed %d\n", status);
+        return status;
+    }
+
+    return AILIA_STATUS_SUCCESS;
 }
 
-vector<FaceInfo> Detection(AILIANetwork *ailia,  const unsigned char* camera, int tex_width, int tex_height, int channels) {
+vector<FaceInfo> detection(AILIANetwork *ailia, std::vector<float> &work, const unsigned char* camera, int tex_width, int tex_height, int channels) {
+    vector<FaceInfo> detections;
+
     // Prepare input data
-    std::vector<float> data(tex_width * tex_height * 3 * 1);
+    work.resize(tex_width * tex_height * 3 * 1);
 
     for (int y = 0; y < tex_height; y++) {
         for (int x = 0; x < tex_width; x++) {
             int idx = (y * tex_width + x) * channels;
-            data[(y * tex_width + x) + 2 * tex_width * tex_height] = static_cast<float>(camera[idx + 2]) - 123.0f; //R
-            data[(y * tex_width + x) + 1 * tex_width * tex_height] = static_cast<float>(camera[idx + 1]) - 117.0f; //G
-            data[(y * tex_width + x)                             ] = static_cast<float>(camera[idx + 0]) - 104.0f; //B
+            work[(y * tex_width + x) + 2 * tex_width * tex_height] = static_cast<float>(camera[idx + 2]) - 123.0f; //R
+            work[(y * tex_width + x) + 1 * tex_width * tex_height] = static_cast<float>(camera[idx + 1]) - 117.0f; //G
+            work[(y * tex_width + x)                             ] = static_cast<float>(camera[idx + 0]) - 104.0f; //B
         }
     }
 
+    // Inference
     unsigned int input_idx = 0;
-    ailiaGetBlobIndexByInputIndex(ailia, &input_idx, 0);
+    int status = ailiaGetBlobIndexByInputIndex(ailia, &input_idx, 0);
+    if (status != AILIA_STATUS_SUCCESS){
+        PRINT_ERR("ailiaGetBlobIndexByInputIndex failed %d\n", status);
+        return detections;
+    }
 
-    ailiaSetInputBlobData(ailia, &data[0], data.size() * sizeof(float), input_idx);
+    status = ailiaSetInputBlobData(ailia, &work[0], work.size() * sizeof(float), input_idx);
+    if (status != AILIA_STATUS_SUCCESS){
+        PRINT_ERR("ailiaSetInputBlobData failed %d\n", status);
+        return detections;
+    }
 
-    ailiaUpdate(ailia);
+    status = ailiaUpdate(ailia);
+    if (status != AILIA_STATUS_SUCCESS){
+        PRINT_ERR("ailiaUpdate failed %d\n", status);
+        return detections;
+    }
 
     AILIAShape box_shape;
     AILIAShape score_shape;
@@ -528,7 +553,7 @@ vector<FaceInfo> Detection(AILIANetwork *ailia,  const unsigned char* camera, in
     ailiaGetBlobData(ailia, &landmark_data[0], landmark_data.size() * sizeof(float), landmark_idx);
 
     // Post-processing
-    vector<FaceInfo> detections = post_process(box_data, score_data, landmark_data, tex_width, tex_height);
+    detections = post_process(box_data, score_data, landmark_data, tex_width, tex_height);
 
     return detections;
 }
@@ -537,7 +562,7 @@ vector<FaceInfo> Detection(AILIANetwork *ailia,  const unsigned char* camera, in
 int plot_result_retinaface(std::vector<FaceInfo> info, cv::Mat& img, bool logging)
 {
     if (logging) {
-        PRINT_OUT("object_count=%d\n", info.size());
+        PRINT_OUT("object_count=%d\n", (int)info.size());
     }
 
     for (int i = 0; i < info.size(); i++) {
@@ -573,36 +598,41 @@ static int recognize_from_image(AILIANetwork* ailia)
     cv::Mat img;
     int status = load_image(img, image_path.c_str());
     if (status != AILIA_STATUS_SUCCESS) {
-        return -1;
+        return status;
     }
     PRINT_OUT("input image shape: (%d, %d, %d)\n",
               img.cols, img.rows, img.channels());
     
-    set_input_shape(ailia, img.cols, img.rows);
+    status = set_input_shape(ailia, img.cols, img.rows);
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("set_input_shape failed %d\n", status);
+        return status;
+    }
 
     // inference
     PRINT_OUT("Start inference...\n");
+    std::vector<float> work;
     vector<FaceInfo> results;
     if (benchmark) {
         PRINT_OUT("BENCHMARK mode\n");
         for (int i = 0; i < BENCHMARK_ITERS; i++) {
             clock_t start = clock();
-            results = Detection(ailia, img.data, img.cols, img.rows, img.channels());
+            results = detection(ailia, work, img.data, img.cols, img.rows, img.channels());
             clock_t end = clock();
             if (status != AILIA_STATUS_SUCCESS) {
                 PRINT_ERR("ailiaDetectorCompute failed %d\n", status);
-                return -1;
+                return status;
             }
             PRINT_OUT("\tailia processing time %ld ms\n", ((end-start)*1000)/CLOCKS_PER_SEC);
         }
     }
     else {
-        results = Detection(ailia, img.data, img.cols, img.rows, img.channels());
+        results = detection(ailia, work, img.data, img.cols, img.rows, img.channels());
     }
 
     status = plot_result_retinaface(results, img, true);
     if (status != AILIA_STATUS_SUCCESS) {
-        return -1;
+        return status;
     }
 
     cv::imwrite(save_image_path.c_str(), img);
@@ -635,7 +665,13 @@ static int recognize_from_video(AILIANetwork* ailia)
         }
     }
 
-    set_input_shape(ailia, IMAGE_WIDTH, IMAGE_HEIGHT);
+    int status = set_input_shape(ailia, IMAGE_WIDTH, IMAGE_HEIGHT);
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("set_input_shape failed %d\n", status);
+        return status;
+    }
+
+    std::vector<float> work;
 
     while (1) {
         cv::Mat frame;
@@ -648,11 +684,11 @@ static int recognize_from_video(AILIANetwork* ailia)
         cv::cvtColor(resized_img, img, cv::COLOR_BGR2BGRA);
 
         vector<FaceInfo> results;
-        results = Detection(ailia, img.data, img.cols, img.rows, 4);
+        results = detection(ailia, work, img.data, img.cols, img.rows, 4);
         
-        int status = plot_result_retinaface(results, resized_img, false);
+        status = plot_result_retinaface(results, resized_img, false);
         if (status != AILIA_STATUS_SUCCESS) {
-            return -1;
+            return status;
         }
         cv::imshow("frame", resized_img);
     }
@@ -726,6 +762,10 @@ int main(int argc, char **argv)
     }
     else {
         status = recognize_from_image(ailia);
+    }
+
+    if (status != AILIA_STATUS_SUCCESS) {
+        PRINT_ERR("recognize failed %d\n", status);
     }
 
     ailiaDestroy(ailia);
