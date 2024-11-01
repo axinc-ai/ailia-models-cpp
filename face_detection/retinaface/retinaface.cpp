@@ -450,68 +450,89 @@ vector<FaceInfo> PostProcess(const vector<float>& box_data, const vector<float>&
     return results;
 }
 
-vector<FaceInfo> Detection(AILIANetwork *ailia,  const vector<unsigned char>& camera, int stride, int tex_width, int tex_height) {
-    // Ailia model interaction part should be implemented here; leaving commented out
-    // as it requires specific binding to the Ailia API in C++.
-
+vector<FaceInfo> Detection(AILIANetwork *ailia,  const unsigned char* camera, int stride, int tex_width, int tex_height) {
     // Prepare input data
-    float* data = new float[tex_width * tex_height * RETINAFACE_DETECTOR_INPUT_CHANNEL_COUNT * RETINAFACE_DETECTOR_INPUT_BATCH_SIZE];
+    std::vector<float> data(tex_width * tex_height * 3 * 1);
 
     for (int y = 0; y < tex_height; y++) {
         for (int x = 0; x < tex_width; x++) {
             int idx = (y * stride + x) * 4;
-            data[(y * tex_width + x) + 2 * tex_width * tex_height] = static_cast<float>(camera[idx] - 123.0f);
-            data[(y * tex_width + x) + 1 * tex_width * tex_height] = static_cast<float>(camera[idx + 1] - 117.0f);
-            data[(y * tex_width + x) + tex_width * tex_height] = static_cast<float>(camera[idx + 2] - 104.0f);
+            data[(y * tex_width + x) + 2 * tex_width * tex_height] = static_cast<float>(camera[idx + 2] - 123.0f); //R
+            data[(y * tex_width + x) + 1 * tex_width * tex_height] = static_cast<float>(camera[idx + 1] - 117.0f); //G
+            data[(y * tex_width + x) + tex_width * tex_height] = static_cast<float>(camera[idx] - 104.0f); //B
         }
     }
 
     AILIAShape shape;
-    shape.x = RETINAFACE_DETECTOR_INPUT_WIDTH_SIZE;
-    shape.y = RETINAFACE_DETECTOR_INPUT_HEIGHT_SIZE;
-    shape.z = RETINAFACE_DETECTOR_INPUT_CHANNEL_COUNT;
-    shape.w = RETINAFACE_DETECTOR_INPUT_BATCH_SIZE;
-    shape.dim 0 4;
+    shape.x = tex_width;
+    shape.y = tex_height;
+    shape.z = 3;
+    shape.w = 1;
+    shape.dim = 4;
     ailiaSetInputBlobShape(ailia, &shape, 0, AILIA_SHAPE_VERSION);
 
-    ailiaSetInputBlobData(ailia, data, 0);
+    ailiaSetInputBlobData(ailia, &data[0], data.size() * sizeof(float), 0);
 
     AILIAShape box_shape;
     AILIAShape score_shape;
     AILIAShape landmark_shape;
 
-    int box_idx = 0;
-    int score_idx = 0;
-    int landmark_idx = 0;
+    unsigned int box_idx = 0;
+    unsigned int score_idx = 0;
+    unsigned int landmark_idx = 0;
 
     ailiaGetBlobIndexByOutputIndex(ailia, &box_idx, 0);
-    ailiaGetBlobShape(ailia, &box_shape, box_idx, AILIA_SHAPE_VRESION);
+    ailiaGetBlobShape(ailia, &box_shape, box_idx, AILIA_SHAPE_VERSION);
     ailiaGetBlobIndexByOutputIndex(ailia, &score_idx, 1);
-    ailiaGetBlobShape(ailia, &score_shape, score_idx, AILIA_SHAPE_VRESION);
+    ailiaGetBlobShape(ailia, &score_shape, score_idx, AILIA_SHAPE_VERSION);
     ailiaGetBlobIndexByOutputIndex(ailia, &landmark_idx, 2);
-    ailiaGetBlobShape(ailia, &landmark_shape, landmark_idx, AILIA_SHAPE_VRESION);
+    ailiaGetBlobShape(ailia, &landmark_shape, landmark_idx, AILIA_SHAPE_VERSION);
 
     vector<float> box_data(box_shape.x * box_shape.y * box_shape.z * box_shape.w);
     vector<float> score_data(score_shape.x * score_shape.y * score_shape.z * score_shape.w);
     vector<float> landmark_data(landmark_shape.x * landmark_shape.y * landmark_shape.z * landmark_shape.w);
 
-    ailiaGetBlobData(ailia, &box_data[0], box_idx);
-    ailiaGetBlobData(ailia, &score_data[0], score_idx);
-    ailiaGetBlobData(ailia, &landmark_data[0], landmark_idx);
+    ailiaGetBlobData(ailia, &box_data[0], box_data.size() * sizeof(float), box_idx);
+    ailiaGetBlobData(ailia, &score_data[0], score_data.size() * sizeof(float),score_idx);
+    ailiaGetBlobData(ailia, &landmark_data[0], landmark_data.size() * sizeof(float),landmark_idx);
 
     // Post-processing
     vector<FaceInfo> detections = PostProcess(box_data, score_data, landmark_data, tex_width, tex_height);
 
-    delete[] data;  // Clean up
     return detections;
 }
 
+
+int plot_result_retinaface(std::vector<FaceInfo> info, cv::Mat& img, bool logging)
+{
+    if (logging) {
+        PRINT_OUT("object_count=%d\n", info.size());
+    }
+
+    for (int i = 0; i < info.size(); i++) {
+        FaceInfo obj = info[i];
+        PRINT_OUT("+ idx=%d\n  prob=%.15f\n  x=%.15f\n  y=%.15f\n  w=%.15f\n  h=%.15f\n",
+                    i, obj.score, obj.center.first, obj.center.second, obj.width, obj.height);
+
+        cv::Point top_left((int)(img.cols*(obj.center.first - obj.width / 2)), (int)(img.rows*(obj.center.second - obj.height / 2)));
+        cv::Point bottom_right((int)(img.cols*(obj.center.first + obj.width / 2)), (int)(img.rows*(obj.center.second + obj.height / 2)));
+        cv::Point text_position((int)(img.cols*(obj.center.first - obj.width / 2))+4, (int)(img.rows*(obj.center.second - obj.height / 2)+4));
+
+        // update image
+        cv::Scalar color = hsv_to_rgb(256*((float)i/(float)info.size()), 255, 255);
+        float fontScale = (float)img.cols / 512.0f;
+        cv::rectangle(img, top_left, bottom_right, color, 4);
+        //cv::putText(img, category[obj.category], text_position, cv::FONT_HERSHEY_SIMPLEX, fontScale, color, 1);
+    }
+
+    return 0;
+}
 
 // ======================
 // Main functions
 // ======================
 
-static int recognize_from_image(AILIADetector* ailia)
+static int recognize_from_image(AILIANetwork* ailia)
 {
     // prepare input data
     cv::Mat img;
@@ -524,11 +545,12 @@ static int recognize_from_image(AILIADetector* ailia)
 
     // inference
     PRINT_OUT("Start inference...\n");
+    vector<FaceInfo> results;
     if (benchmark) {
         PRINT_OUT("BENCHMARK mode\n");
         for (int i = 0; i < BENCHMARK_ITERS; i++) {
             clock_t start = clock();
-            status = Detection(ailia, img.data,
+            results = Detection(ailia, img.data,
                                           img.cols*4, img.cols, img.rows);
             clock_t end = clock();
             if (status != AILIA_STATUS_SUCCESS) {
@@ -539,15 +561,11 @@ static int recognize_from_image(AILIADetector* ailia)
         }
     }
     else {
-        status = Detection(ailia, img.data,
+        results = Detection(ailia, img.data,
                                       img.cols*4, img.cols, img.rows);
-        if (status != AILIA_STATUS_SUCCESS) {
-            PRINT_ERR("ailiaDetectorCompute failed %d\n", status);
-            return -1;
-        }
     }
 
-    status = plot_result(ailia, img, FACE_CATEGORY);
+    status = plot_result_retinaface(results, img, true);
     if (status != AILIA_STATUS_SUCCESS) {
         return -1;
     }
@@ -560,7 +578,7 @@ static int recognize_from_image(AILIADetector* ailia)
 }
 
 
-static int recognize_from_video(AILIADetector* ailia)
+static int recognize_from_video(AILIANetwork* ailia)
 {
     // inference
     cv::VideoCapture capture;
@@ -592,15 +610,10 @@ static int recognize_from_video(AILIADetector* ailia)
         adjust_frame_size(frame, resized_img, IMAGE_WIDTH, IMAGE_HEIGHT);
         cv::cvtColor(resized_img, img, cv::COLOR_BGR2BGRA);
 
-        int status = Detection(ailia, img.data,
-                                          MODEL_INPUT_WIDTH*4, MODEL_INPUT_WIDTH, MODEL_INPUT_HEIGHT,
-                                          );
-        if (status != AILIA_STATUS_SUCCESS) {
-            PRINT_ERR("ailiaDetectorCompute failed %d\n", status);
-            return -1;
-        }
-
-        status = plot_result(ailia, resized_img, FACE_CATEGORY, false);
+        vector<FaceInfo> results;
+        results = Detection(ailia, img.data, img.cols*4, img.cols, img.rows);
+        
+        int status = plot_result_retinaface(results, resized_img, false);
         if (status != AILIA_STATUS_SUCCESS) {
             return -1;
         }
