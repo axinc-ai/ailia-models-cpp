@@ -533,12 +533,37 @@ vector<FaceInfo> detection(AILIANetwork *ailia, std::vector<float> &work, const 
     unsigned int score_idx = 0;
     unsigned int landmark_idx = 0;
 
-    ailiaGetBlobIndexByOutputIndex(ailia, &box_idx, 0);
-    ailiaGetBlobShape(ailia, &box_shape, box_idx, AILIA_SHAPE_VERSION);
-    ailiaGetBlobIndexByOutputIndex(ailia, &score_idx, 1);
-    ailiaGetBlobShape(ailia, &score_shape, score_idx, AILIA_SHAPE_VERSION);
-    ailiaGetBlobIndexByOutputIndex(ailia, &landmark_idx, 2);
-    ailiaGetBlobShape(ailia, &landmark_shape, landmark_idx, AILIA_SHAPE_VERSION);
+    status = ailiaGetBlobIndexByOutputIndex(ailia, &box_idx, 0);
+    if (status != AILIA_STATUS_SUCCESS){
+        PRINT_ERR("ailiaGetBlobIndexByOutputIndex failed %d\n", status);
+        return detections;
+    }
+    status = ailiaGetBlobIndexByOutputIndex(ailia, &score_idx, 1);
+    if (status != AILIA_STATUS_SUCCESS){
+        PRINT_ERR("ailiaGetBlobIndexByOutputIndex failed %d\n", status);
+        return detections;
+    }
+    status = ailiaGetBlobIndexByOutputIndex(ailia, &landmark_idx, 2);
+    if (status != AILIA_STATUS_SUCCESS){
+        PRINT_ERR("ailiaGetBlobIndexByOutputIndex failed %d\n", status);
+        return detections;
+    }
+
+    status = ailiaGetBlobShape(ailia, &box_shape, box_idx, AILIA_SHAPE_VERSION);
+    if (status != AILIA_STATUS_SUCCESS){
+        PRINT_ERR("ailiaGetBlobShape failed %d\n", status);
+        return detections;
+    }
+    status = ailiaGetBlobShape(ailia, &score_shape, score_idx, AILIA_SHAPE_VERSION);
+    if (status != AILIA_STATUS_SUCCESS){
+        PRINT_ERR("ailiaGetBlobShape failed %d\n", status);
+        return detections;
+    }
+    status = ailiaGetBlobShape(ailia, &landmark_shape, landmark_idx, AILIA_SHAPE_VERSION);
+    if (status != AILIA_STATUS_SUCCESS){
+        PRINT_ERR("ailiaGetBlobShape failed %d\n", status);
+        return detections;
+    }
 
     vector<float> box_data(box_shape.x * box_shape.y * box_shape.z * box_shape.w);
     vector<float> score_data(score_shape.x * score_shape.y * score_shape.z * score_shape.w);
@@ -548,9 +573,21 @@ vector<FaceInfo> detection(AILIANetwork *ailia, std::vector<float> &work, const 
     //PRINT_OUT("score %d %d %d %d\n", score_shape.x, score_shape.y, score_shape.z, score_shape.w);
     //PRINT_OUT("landmark %d %d %d %d\n", landmark_shape.x, landmark_shape.y, landmark_shape.z, landmark_shape.w);
 
-    ailiaGetBlobData(ailia, &box_data[0], box_data.size() * sizeof(float), box_idx);
-    ailiaGetBlobData(ailia, &score_data[0], score_data.size() * sizeof(float), score_idx);
-    ailiaGetBlobData(ailia, &landmark_data[0], landmark_data.size() * sizeof(float), landmark_idx);
+    status = ailiaGetBlobData(ailia, &box_data[0], box_data.size() * sizeof(float), box_idx);
+    if (status != AILIA_STATUS_SUCCESS){
+        PRINT_ERR("ailiaGetBlobData failed %d\n", status);
+        return detections;
+    }
+    status = ailiaGetBlobData(ailia, &score_data[0], score_data.size() * sizeof(float), score_idx);
+    if (status != AILIA_STATUS_SUCCESS){
+        PRINT_ERR("ailiaGetBlobData failed %d\n", status);
+        return detections;
+    }
+    status = ailiaGetBlobData(ailia, &landmark_data[0], landmark_data.size() * sizeof(float), landmark_idx);
+    if (status != AILIA_STATUS_SUCCESS){
+        PRINT_ERR("ailiaGetBlobData failed %d\n", status);
+        return detections;
+    }
 
     // Post-processing
     detections = post_process(box_data, score_data, landmark_data, tex_width, tex_height);
