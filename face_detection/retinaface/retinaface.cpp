@@ -37,6 +37,9 @@ using namespace std;
 #define WEIGHT_PATH "retinaface_resnet50.onnx"
 #define MODEL_PATH  "retinaface_resnet50.onnx.prototxt"
 
+#define WEIGHT_PATH_MOBILE "retinaface_mobile0.25.onnx"
+#define MODEL_PATH_MOBILE  "retinaface_mobile0.25.onnx.prototxt"
+
 #define IMAGE_PATH      "selfie.png"
 #define SAVE_IMAGE_PATH "output.png"
 
@@ -53,16 +56,12 @@ using namespace std;
 
 #define BENCHMARK_ITERS 5
 
-static std::string weight(WEIGHT_PATH);
-static std::string model(MODEL_PATH);
-
 static std::string image_path(IMAGE_PATH);
 static std::string video_path("0");
 static std::string save_image_path(SAVE_IMAGE_PATH);
 
-static const std::vector<const char*> FACE_CATEGORY = {"face"};
-
 static bool benchmark  = false;
+static bool mobile  = false;
 static bool video_mode = false;
 
 
@@ -94,6 +93,7 @@ static void print_help()
     PRINT_OUT("  -b, --benchmark       Running the inference on the same input 5 times to\n");
     PRINT_OUT("                        measure execution performance. (Cannot be used in\n");
     PRINT_OUT("                        video mode)\n");
+    PRINT_OUT("  -m, --mobile          Use mobile version model.\n");
     return;
 }
 
@@ -124,6 +124,9 @@ static int argument_parser(int argc, char **argv)
             }
             else if (arg == "-b" || arg == "--benchmark") {
                 benchmark = true;
+            }
+            else if (arg == "-m" || arg == "--mobile") {
+                mobile = true;
             }
             else if (arg == "-h" || arg == "--help") {
                 print_usage();
@@ -180,6 +183,7 @@ int TOP_K = 5000;
 int KEEP_TOP_K = 750;
 const float CONFIDENCE_THRES = 0.02f;
 const float NMS_THRES = 0.4f;
+const float VIS_THRES = 0.6f;
 float VARIANCE[] = {0.1f, 0.2f};
 
 struct FaceInfo {
@@ -541,8 +545,13 @@ int plot_result_retinaface(std::vector<FaceInfo> info, cv::Mat& img, bool loggin
 
     for (int i = 0; i < info.size(); i++) {
         FaceInfo obj = info[i];
-        PRINT_OUT("+ idx=%d\n  score=%.15f\n  x=%.15f\n  y=%.15f\n  w=%.15f\n  h=%.15f\n",
-                    i, obj.score, obj.center.first, obj.center.second, obj.width, obj.height);
+        if (obj.score < VIS_THRES){
+            continue;
+        }
+        if (logging){
+            PRINT_OUT("+ idx=%d\n  score=%.15f\n  x=%.15f\n  y=%.15f\n  w=%.15f\n  h=%.15f\n",
+                        i, obj.score, obj.center.first, obj.center.second, obj.width, obj.height);
+        }
 
         cv::Point top_left((int)((obj.center.first - obj.width / 2)), (int)((obj.center.second - obj.height / 2)));
         cv::Point bottom_right((int)((obj.center.first + obj.width / 2)), (int)((obj.center.second + obj.height / 2)));
@@ -664,6 +673,13 @@ int main(int argc, char **argv)
     int status = argument_parser(argc, argv);
     if (status != AILIA_STATUS_SUCCESS) {
         return -1;
+    }
+
+    static std::string weight(WEIGHT_PATH);
+    static std::string model(MODEL_PATH);
+    if (mobile){
+        weight = WEIGHT_PATH_MOBILE;
+        model = MODEL_PATH_MOBILE;
     }
 
     // net initialize
