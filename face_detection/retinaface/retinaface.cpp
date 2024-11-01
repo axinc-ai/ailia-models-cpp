@@ -381,7 +381,35 @@ vector<int> Nms(const vector<vector<float>>& boxes, const vector<float>& scores,
     return keep;
 }
 
+bool compare_indices(const std::pair<int, float>& a, const std::pair<int, float>& b) {
+    return a.second > b.second; // 二番目の要素（スコア）が大きい方を優先
+}
+
+std::vector<int> sort_indices_by_score(const std::vector<float>& filtered_score) {
+    // インデックスとスコアをペアにして保持
+    std::vector<std::pair<int, float>> indexed_scores;
+    for (size_t i = 0; i < filtered_score.size(); ++i) {
+        indexed_scores.emplace_back(i, filtered_score[i]);
+    }
+
+    // スコアに基づいてソート
+    std::sort(indexed_scores.begin(), indexed_scores.end(), compare_indices);
+
+    // ソートされたインデックスを取得
+    std::vector<int> order;
+    for (const auto& pair : indexed_scores) {
+        order.push_back(pair.first);
+    }
+
+    return order;
+}
+
 vector<FaceInfo> PostProcess(const vector<float>& box_data, const vector<float>& score_data, const vector<float>& landmark_data, int tex_width, int tex_height) {
+    PRINT_OUT("PostProcess1");
+    fflush(stdout);
+
+    vector<FaceInfo> results;
+
     vector<int> boxShape = {static_cast<int>(box_data.size() / BOX_DIM), BOX_DIM};
     vector<vector<float>> reshaped_box_data = Reshape(box_data, boxShape[1]);
     vector<vector<float>> priors = PriorBoxForward(tex_width, tex_height);
@@ -399,25 +427,58 @@ vector<FaceInfo> PostProcess(const vector<float>& box_data, const vector<float>&
     vector<int> landmark_scale = {tex_width, tex_height, tex_width, tex_height, tex_width, tex_height, tex_width, tex_height, tex_width, tex_height};
     vector<vector<float>> scaled_landmarks = Scale(landmarks, landmark_scale);
 
+    PRINT_OUT("PostProcess2");
+    fflush(stdout);
+
     vector<int> inds;
     for (int i = 0; i < scores.size(); i++) {
         if (scores[i] > CONFIDENCE_THRES) {
             inds.push_back(i);
         }
     }
+
+    PRINT_OUT("PostProcess3");
+    fflush(stdout);
+
+    PRINT_OUT("scaled_boxes %d", scaled_boxes.size());
+    PRINT_OUT("scores %d", scores.size());
+    PRINT_OUT("scaled_landmarks %d", scaled_landmarks.size());
+    fflush(stdout);
+
     vector<vector<float>> filtered_boxes = Filter(scaled_boxes, inds);
     vector<float> filtered_scores = Filter(scores, inds);
     vector<vector<float>> filtered_landmarks = Filter(scaled_landmarks, inds);
 
+    PRINT_OUT("filtered_boxes %d\n", filtered_boxes.size());
+    PRINT_OUT("filtered_scores %d\n", filtered_scores.size());
+    PRINT_OUT("filtered_landmarks %d\n", filtered_landmarks.size());
+    fflush(stdout);
+
+    PRINT_OUT("PostProcess4");
+    fflush(stdout);
+
+    if (filtered_scores.size() == 0){
+        return results;
+    }
+
     int top_k = min(TOP_K, static_cast<int>(filtered_scores.size()));
+    vector<int> order = sort_indices_by_score(filtered_scores);
+    /*
     vector<int> order = [&filtered_scores]() {
         vector<int> idx(filtered_scores.size());
         iota(idx.begin(), idx.end(), 0);
         sort(idx.begin(), idx.end(), [&filtered_scores](int a, int b) { return filtered_scores[a] > filtered_scores[b]; });
         return idx;
     }();
+    */
+    PRINT_OUT("KeepTopKBeforeNMS filtered_boxes %d %d\n", filtered_boxes.size(), filtered_boxes[0].size());
+    fflush(stdout);
     vector<vector<float>> top_k_boxes = KeepTopKBeforeNMS(filtered_boxes, order, top_k);
+    PRINT_OUT("KeepTopKBeforeNMS filtered_scores %d\n", filtered_scores.size());
+    fflush(stdout);
     vector<float> top_k_scores = KeepTopKBeforeNMS(filtered_scores, order, top_k);
+    PRINT_OUT("KeepTopKBeforeNMS filtered_landmarks %d %d\n", filtered_landmarks.size(), filtered_landmarks[0].size());
+    fflush(stdout);
     vector<vector<float>> top_k_landmarks = KeepTopKBeforeNMS(filtered_landmarks, order, top_k);
 
     vector<int> keep = Nms(top_k_boxes, top_k_scores, NMS_THRES);
@@ -434,7 +495,6 @@ vector<FaceInfo> PostProcess(const vector<float>& box_data, const vector<float>&
     }
 
     int keep_top_k = min(KEEP_TOP_K, static_cast<int>(nms_scores.size()));
-    vector<FaceInfo> results;
     for (int i = 0; i < keep_top_k; i++) {
         FaceInfo faceInfo;
         faceInfo.score = nms_scores[i];
@@ -450,16 +510,16 @@ vector<FaceInfo> PostProcess(const vector<float>& box_data, const vector<float>&
     return results;
 }
 
-vector<FaceInfo> Detection(AILIANetwork *ailia,  const unsigned char* camera, int stride, int tex_width, int tex_height) {
+vector<FaceInfo> Detection(AILIANetwork *ailia,  const unsigned char* camera, int tex_width, int tex_height, int channels) {
     // Prepare input data
     std::vector<float> data(tex_width * tex_height * 3 * 1);
 
     for (int y = 0; y < tex_height; y++) {
         for (int x = 0; x < tex_width; x++) {
-            int idx = (y * stride + x) * 4;
-            data[(y * tex_width + x) + 2 * tex_width * tex_height] = static_cast<float>(camera[idx + 2] - 123.0f); //R
-            data[(y * tex_width + x) + 1 * tex_width * tex_height] = static_cast<float>(camera[idx + 1] - 117.0f); //G
-            data[(y * tex_width + x) + tex_width * tex_height] = static_cast<float>(camera[idx] - 104.0f); //B
+            int idx = (y * tex_width + x) * channels;
+            data[(y * tex_width + x) + 2 * tex_width * tex_height] = static_cast<float>(camera[idx + 2]) - 123.0f; //R
+            data[(y * tex_width + x) + 1 * tex_width * tex_height] = static_cast<float>(camera[idx + 1]) - 117.0f; //G
+            data[(y * tex_width + x)                             ] = static_cast<float>(camera[idx + 0]) - 104.0f; //B
         }
     }
 
@@ -469,9 +529,16 @@ vector<FaceInfo> Detection(AILIANetwork *ailia,  const unsigned char* camera, in
     shape.z = 3;
     shape.w = 1;
     shape.dim = 4;
-    ailiaSetInputBlobShape(ailia, &shape, 0, AILIA_SHAPE_VERSION);
 
-    ailiaSetInputBlobData(ailia, &data[0], data.size() * sizeof(float), 0);
+    unsigned int input_idx = 0;
+    ailiaGetBlobIndexByInputIndex(ailia, &input_idx, 0);
+
+    PRINT_OUT("input_idx %d", input_idx);
+
+    ailiaSetInputBlobShape(ailia, &shape, input_idx, AILIA_SHAPE_VERSION);
+    ailiaSetInputBlobData(ailia, &data[0], data.size() * sizeof(float), input_idx);
+
+    ailiaUpdate(ailia);
 
     AILIAShape box_shape;
     AILIAShape score_shape;
@@ -492,9 +559,16 @@ vector<FaceInfo> Detection(AILIANetwork *ailia,  const unsigned char* camera, in
     vector<float> score_data(score_shape.x * score_shape.y * score_shape.z * score_shape.w);
     vector<float> landmark_data(landmark_shape.x * landmark_shape.y * landmark_shape.z * landmark_shape.w);
 
+    PRINT_OUT("box %d %d %d %d\n", box_shape.x, box_shape.y, box_shape.z, box_shape.w);
+    PRINT_OUT("score %d %d %d %d\n", score_shape.x, score_shape.y, score_shape.z, score_shape.w);
+    PRINT_OUT("landmark %d %d %d %d\n", landmark_shape.x, landmark_shape.y, landmark_shape.z, landmark_shape.w);
+
     ailiaGetBlobData(ailia, &box_data[0], box_data.size() * sizeof(float), box_idx);
-    ailiaGetBlobData(ailia, &score_data[0], score_data.size() * sizeof(float),score_idx);
-    ailiaGetBlobData(ailia, &landmark_data[0], landmark_data.size() * sizeof(float),landmark_idx);
+    ailiaGetBlobData(ailia, &score_data[0], score_data.size() * sizeof(float), score_idx);
+    ailiaGetBlobData(ailia, &landmark_data[0], landmark_data.size() * sizeof(float), landmark_idx);
+
+    printf("blob get success");
+    fflush(stdout);
 
     // Post-processing
     vector<FaceInfo> detections = PostProcess(box_data, score_data, landmark_data, tex_width, tex_height);
@@ -514,9 +588,9 @@ int plot_result_retinaface(std::vector<FaceInfo> info, cv::Mat& img, bool loggin
         PRINT_OUT("+ idx=%d\n  prob=%.15f\n  x=%.15f\n  y=%.15f\n  w=%.15f\n  h=%.15f\n",
                     i, obj.score, obj.center.first, obj.center.second, obj.width, obj.height);
 
-        cv::Point top_left((int)(img.cols*(obj.center.first - obj.width / 2)), (int)(img.rows*(obj.center.second - obj.height / 2)));
-        cv::Point bottom_right((int)(img.cols*(obj.center.first + obj.width / 2)), (int)(img.rows*(obj.center.second + obj.height / 2)));
-        cv::Point text_position((int)(img.cols*(obj.center.first - obj.width / 2))+4, (int)(img.rows*(obj.center.second - obj.height / 2)+4));
+        cv::Point top_left((int)((obj.center.first - obj.width / 2)), (int)((obj.center.second - obj.height / 2)));
+        cv::Point bottom_right((int)((obj.center.first + obj.width / 2)), (int)((obj.center.second + obj.height / 2)));
+        cv::Point text_position((int)((obj.center.first - obj.width / 2))+4, (int)((obj.center.second - obj.height / 2)+4));
 
         // update image
         cv::Scalar color = hsv_to_rgb(256*((float)i/(float)info.size()), 255, 255);
@@ -550,8 +624,7 @@ static int recognize_from_image(AILIANetwork* ailia)
         PRINT_OUT("BENCHMARK mode\n");
         for (int i = 0; i < BENCHMARK_ITERS; i++) {
             clock_t start = clock();
-            results = Detection(ailia, img.data,
-                                          img.cols*4, img.cols, img.rows);
+            results = Detection(ailia, img.data, img.cols, img.rows, img.channels());
             clock_t end = clock();
             if (status != AILIA_STATUS_SUCCESS) {
                 PRINT_ERR("ailiaDetectorCompute failed %d\n", status);
@@ -561,8 +634,7 @@ static int recognize_from_image(AILIANetwork* ailia)
         }
     }
     else {
-        results = Detection(ailia, img.data,
-                                      img.cols*4, img.cols, img.rows);
+        results = Detection(ailia, img.data, img.cols, img.rows, img.channels());
     }
 
     status = plot_result_retinaface(results, img, true);
@@ -611,7 +683,7 @@ static int recognize_from_video(AILIANetwork* ailia)
         cv::cvtColor(resized_img, img, cv::COLOR_BGR2BGRA);
 
         vector<FaceInfo> results;
-        results = Detection(ailia, img.data, img.cols*4, img.cols, img.rows);
+        results = Detection(ailia, img.data, img.cols, img.rows, 4);
         
         int status = plot_result_retinaface(results, resized_img, false);
         if (status != AILIA_STATUS_SUCCESS) {
